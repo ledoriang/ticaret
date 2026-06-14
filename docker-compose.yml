@@ -35,7 +35,7 @@ services:
     restart: unless-stopped
 
   timescaledb:
-    image: timescale/timescaledb:latest-pg16
+    image: timescale/timescaledb:2.15.0-pg16
     container_name: trading-timescaledb
     ports:
       - "5432:5432"
@@ -72,7 +72,7 @@ services:
     restart: unless-stopped
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:11.6.15-ubuntu
     container_name: trading-grafana
     ports:
       - "3000:3000"

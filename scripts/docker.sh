@@ -79,7 +79,7 @@ healthcheck() {
 case "${1:-help}" in
     up)
         echo "Starting containers..."
-        docker compose up -d --build
+        docker compose up -d
         echo "Waiting for services to become healthy..."
         healthcheck redis
         healthcheck timescaledb
