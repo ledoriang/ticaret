@@ -54,7 +54,7 @@ services:
     restart: unless-stopped
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.53.0
     container_name: trading-prometheus
     ports:
       - "9126:9090"
@@ -73,7 +73,7 @@ services:
     restart: unless-stopped
 
   grafana:
-    image: grafana/grafana:11.6.15-ubuntu
+    image: grafana/grafana:latest
     container_name: trading-grafana
     ports:
       - "9127:3000"
