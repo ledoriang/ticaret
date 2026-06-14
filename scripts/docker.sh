@@ -20,13 +20,14 @@ usage() {
 Usage: $(basename "$0") <command>
 
 Commands:
-  up           Start all containers, wait for health
-  down         Tear down all containers
-  restart      Down then up
-  logs [svc]   Tail logs (all services or specific one)
-  status       Show container states
-  reset-db     Destroy timescaledb volume and recreate
-  help         Show this help
+  up             Start all containers, wait for health (builds if needed)
+  build          Build (or rebuild) the trading-engine image
+  down           Tear down all containers
+  restart        Down then up
+  logs [svc]    Tail logs (all services or specific one)
+  status         Show container states
+  reset-db       Destroy timescaledb volume and recreate
+  help           Show this help
 EOF
     exit 1
 }
@@ -61,6 +62,12 @@ healthcheck() {
                     return 0
                 fi
                 ;;
+            trading)
+                if curl -sf http://localhost:8000/-/healthy >/dev/null 2>&1; then
+                    info "trading-engine is healthy"
+                    return 0
+                fi
+                ;;
         esac
         count=$((count + 1))
         sleep 1
@@ -72,13 +79,18 @@ healthcheck() {
 case "${1:-help}" in
     up)
         echo "Starting containers..."
-        docker compose up -d
+        docker compose up -d --build
         echo "Waiting for services to become healthy..."
         healthcheck redis
         healthcheck timescaledb
+        healthcheck trading
         healthcheck prometheus
         healthcheck grafana
         info "All containers are up and healthy"
+        ;;
+    build)
+        docker compose build trading
+        info "trading-engine image built"
         ;;
     down)
         docker compose down

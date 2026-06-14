@@ -1,4 +1,27 @@
 services:
+  trading:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trading-engine
+    command: ["paper-trade", "--strategy", "sma_crossover", "--symbols", "BTC/USDT", "--config", "/app/configs/docker.yaml"]
+    ports:
+      - "8000:8000"
+    environment:
+      - TRADING_REDIS__HOST=redis
+      - TRADING_DATABASE__HOST=timescaledb
+    depends_on:
+      redis:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import trading"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   redis:
     image: redis:7-alpine
     container_name: trading-redis
@@ -41,6 +64,9 @@ services:
       - "--storage.tsdb.path=/prometheus"
       - "--web.console.libraries=/usr/share/prometheus/console_libraries"
       - "--web.console.templates=/usr/share/prometheus/consoles"
+    depends_on:
+      trading:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "http://localhost:9090/-/healthy"]
       interval: 10s

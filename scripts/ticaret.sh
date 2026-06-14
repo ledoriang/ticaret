@@ -22,8 +22,9 @@ Usage: $(basename "$0") <command> [options]
 Dev CLI shorthand for the trading stack.
 
 Container management:
-  up                Start all containers (redis, timescaledb, prometheus, grafana)
+  up                Start all containers (builds trading-engine image if needed)
   down              Tear down all containers
+  build             Build (or rebuild) the trading-engine Docker image
   restart           Down then up
   logs [service]    Tail docker logs
   status            Show container states
@@ -82,6 +83,10 @@ case "${1:-help}" in
     down)
         check_docker
         exec "$SCRIPT_DIR/docker.sh" down
+        ;;
+    build)
+        check_docker
+        exec "$SCRIPT_DIR/docker.sh" build
         ;;
     restart)
         check_docker
