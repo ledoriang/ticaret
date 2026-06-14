@@ -105,11 +105,18 @@ def paper_trade(
                 )
         await orchestrator.start()
 
+        stop_event = asyncio.Event()
+        try:
+            await stop_event.wait()
+        except asyncio.CancelledError:
+            pass
+        finally:
+            await orchestrator.stop()
+
     try:
         asyncio.run(_run())
     except KeyboardInterrupt:
         typer.echo("\nShutting down...")
-        asyncio.run(orchestrator.stop())
 
 
 @app.command()
