@@ -15,9 +15,8 @@ COPY configs/ /app/configs/
 
 RUN uv sync --frozen --no-dev --verbose
 
-ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONPATH="/app/src"
 
 EXPOSE 8000
 
-ENTRYPOINT ["trading"]
+ENTRYPOINT ["python", "-m", "trading.cli.main"]
