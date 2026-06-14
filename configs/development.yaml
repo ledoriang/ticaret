@@ -2,11 +2,11 @@ execution_mode: dry_run
 
 redis:
   host: localhost
-  port: 6379
+  port: 9124
 
 database:
   host: localhost
-  port: 5432
+  port: 9125
   name: trading
   user: trading
   password: trading_dev

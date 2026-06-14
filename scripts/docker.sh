@@ -51,19 +51,19 @@ healthcheck() {
                 fi
                 ;;
             prometheus)
-                if curl -sf http://localhost:9090/-/healthy >/dev/null 2>&1; then
+                if curl -sf http://localhost:9126/-/healthy >/dev/null 2>&1; then
                     info "prometheus is healthy"
                     return 0
                 fi
                 ;;
             grafana)
-                if curl -sf http://localhost:3000/api/health >/dev/null 2>&1; then
+                if curl -sf http://localhost:9127/api/health >/dev/null 2>&1; then
                     info "grafana is healthy"
                     return 0
                 fi
                 ;;
             trading)
-                if curl -sf http://localhost:8000/-/healthy >/dev/null 2>&1; then
+                if curl -sf http://localhost:9123/-/healthy >/dev/null 2>&1; then
                     info "trading-engine is healthy"
                     return 0
                 fi

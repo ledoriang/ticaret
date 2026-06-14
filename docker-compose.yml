@@ -6,7 +6,7 @@ services:
     container_name: trading-engine
     command: ["paper-trade", "--strategy", "sma_crossover", "--symbols", "BTC/USDT", "--config", "/app/configs/docker.yaml"]
     ports:
-      - "8000:8000"
+      - "9123:8000"
     environment:
       - TRADING_REDIS__HOST=redis
       - TRADING_DATABASE__HOST=timescaledb
@@ -26,7 +26,7 @@ services:
     image: redis:7-alpine
     container_name: trading-redis
     ports:
-      - "6379:6379"
+      - "9124:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -38,7 +38,7 @@ services:
     image: timescale/timescaledb:2.15.0-pg16
     container_name: trading-timescaledb
     ports:
-      - "5432:5432"
+      - "9125:5432"
     environment:
       POSTGRES_DB: trading
       POSTGRES_USER: trading
@@ -56,7 +56,7 @@ services:
     image: prom/prometheus:latest
     container_name: trading-prometheus
     ports:
-      - "9090:9090"
+      - "9126:9090"
     volumes:
       - ./grafana/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     command:
@@ -75,7 +75,7 @@ services:
     image: grafana/grafana:11.6.15-ubuntu
     container_name: trading-grafana
     ports:
-      - "3000:3000"
+      - "9127:3000"
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
