@@ -35,7 +35,7 @@ services:
     restart: unless-stopped
 
   timescaledb:
-    image: timescale/timescaledb:2-pg16
+    image: timescale/timescaledb:latest-pg16
     container_name: trading-timescaledb
     ports:
       - "5432:5432"
