@@ -91,7 +91,7 @@ class TimescaleRepository:
         ]
 
     async def bulk_insert_bars(self, file_path: str) -> None:
-        pass
+        raise NotImplementedError("bulk_insert_bars not yet implemented")
 
     async def close(self) -> None:
         if self._pool:

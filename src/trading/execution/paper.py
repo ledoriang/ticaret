@@ -2,7 +2,7 @@ from collections.abc import Generator
 from datetime import datetime
 from uuid import uuid4
 
-from trading.core.enums import AssetClass
+from trading.core.enums import AssetClass, Side
 from trading.core.events import FillEvent, OrderEvent
 from trading.core.market_hours import MarketHours
 from trading.core.models import AccountInfo, Bar, Position
@@ -47,7 +47,7 @@ class PaperAdapter(AbstractBrokerAdapter):
     async def submit_order(self, order: OrderEvent) -> FillEvent:
         fill_price = order.price or self._last_prices.get(order.symbol, 0.0)
         slippage = fill_price * self.simulated_slippage
-        fill_price += slippage if order.side.value == "buy" else -slippage
+        fill_price += slippage if order.side == Side.BUY else -slippage
         commission = fill_price * order.quantity * self.simulated_fee_rate
 
         fill = FillEvent(
@@ -62,7 +62,7 @@ class PaperAdapter(AbstractBrokerAdapter):
             correlation_id=order.correlation_id,
         )
 
-        if order.side.value == "buy":
+        if order.side == Side.BUY:
             cost = fill_price * order.quantity + commission
             self._cash -= cost
             if order.symbol in self._positions:

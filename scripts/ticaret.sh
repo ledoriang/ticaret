@@ -125,6 +125,10 @@ case "${1:-help}" in
         ;;
     backtest)
         shift
+        # Strip -- separator if present (forwarded as literal arg by shell)
+        if [[ $# -gt 0 && "$1" == "--" ]]; then
+            shift
+        fi
         uv run trading backtest "$@"
         ;;
     shell)

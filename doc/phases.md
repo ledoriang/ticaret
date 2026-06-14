@@ -2,7 +2,7 @@
 
 ## Phase 1 — Foundation & Backtesting (2-3 weeks)
 
-**Goal:** Run a backtested SMA crossover strategy on BTC/USDT historical data with a full metrics report. Prove the data pipeline, model layer, and backtesting engine work end-to-end.
+**Goal:** Run a backtested SMA crossover strategy on BTC/USDT historical data with a full metrics report. Prove the data pipeline, model layer, and backtesting engine work end-to-end. **Backtesting must reflect realistic trading conditions** — brokerage fees and slippage are applied so that a profitable backtest is meaningful, not just a paper win.
 
 | Step | Deliverable | Key Details |
 |---|---|---|
@@ -18,13 +18,18 @@
 | 1.10 | `data/indicators.py` | pandas-ta + TA-Lib wrappers, vectorized computation |
 | 1.11 | `strategy/base.py` + `strategy/registry.py` + `strategy/sma_crossover.py` | Strategy plugin system, first strategy |
 | 1.12 | `backtest/runner.py` + `backtest/metrics.py` | Vectorbt engine, Sharpe/drawdown/PnL/Sortino/win rate |
-| 1.13 | `rust_kernel/` scaffold | `Cargo.toml`, `lib.rs` stub, `maturin` config. Compiles, importable from Python, does nothing yet |
-| 1.14 | Full test suite | Unit tests for models, events, adapters (mocked HTTP), risk rules, strategies |
-| 1.15 | Docker Compose validation | `docker-compose up` starts Redis, TimescaleDB, Grafana, Prometheus. Health checks pass |
-| 1.16 | Dev tooling scripts | `scripts/ticaret.sh` CLI shorthand (up/down/lint/test/check/seed/db/backtest/setup) + standalone `docker.sh`, `lint.sh`, `test.sh`, `db.sh`. Python utilities moved to `scripts/py/` |
+| 1.13 | `backtest/brokerage.py` | **Brokerage cost model** — configurable per-broker fee schedule (e.g. Binance 0.1% maker/taker, Alpaca $0 commission). Applied to every fill in the backtest. Estimated effort: ~0.5 day. Fee structure can be a simple dict in config: `{maker: 0.001, taker: 0.001}` |
+| 1.14 | `backtest/slippage.py` | **Slippage model** — configurable slippage per asset class and order type. Defaults: crypto 0.05%-0.1% (varies by liquidity), equity 0.02%-0.05%. Applied as adverse price movement on each fill. Estimated effort: ~0.5 day. Can start with a fixed-basis-point model and later add volume-based slippage |
+| 1.15 | `backtest/trade_journal.py` | **Detailed trade log per fill** — records entry/exit timestamp, price, quantity, slippage, brokerage cost, strategy signal source, and the raw indicator values that triggered the trade. Enables manual chart review of every trade to spot false positives that passed code filters but aren't valid setups to a human eye. Estimated effort: ~1 day |
+| 1.16 | `rust_kernel/` scaffold | `Cargo.toml`, `lib.rs` stub, `maturin` config. Compiles, importable from Python, does nothing yet |
+| 1.17 | Full test suite | Unit tests for models, events, adapters (mocked HTTP), risk rules, strategies, brokerage/slippage cost calculations |
+| 1.18 | Docker Compose validation | `docker-compose up` starts Redis, TimescaleDB, Grafana, Prometheus. Health checks pass |
+| 1.19 | Dev tooling scripts | `scripts/ticaret.sh` CLI shorthand (up/down/lint/test/check/seed/db/backtest/setup) + standalone `docker.sh`, `lint.sh`, `test.sh`, `db.sh`. Python utilities moved to `scripts/py/` |
 
 **Exit Criteria:**
-- Run `./scripts/ticaret.sh backtest -- --symbol BTC/USDT --start 2020-01-01 --end 2025-01-01` and get a full metrics report with equity curve
+- Run `./scripts/ticaret.sh backtest --symbol BTC/USDT --start 2020-01-01 --end 2025-01-01` and get a full metrics report with equity curve
+- Backtest metrics include brokerage fees and slippage deducted from PnL
+- Trade journal exported with per-trade details for manual chart verification
 - Binance adapter fetches real data from API
 - Paper adapter simulates fills correctly
 - `import rust_kernel` succeeds (returns stub)
@@ -93,8 +98,10 @@
 | 4.3 | Health monitoring & self-healing | Auto-reconnect on WebSocket drops. Stale data detection (no bar for > 60s triggers alert) |
 | 4.4 | Dead-letter queue | Failed orders land in `failed_orders` table. Manual review or automatic retry |
 | 4.5 | Position reconciliation | On startup, sync local state with broker state. Detect drift |
-| 4.6 | Slippage & fee tracking | Real vs. expected fill comparison. Alert if slippage exceeds threshold |
-| 4.7 | Win/loss trade journal | Every trade logged: strategy name, signal source, sentiment at entry, risk rule verdicts, entry/exit price, slippage |
+| 4.6 | Slippage & fee tracking | Real vs. expected fill comparison. Alert if slippage exceeds threshold. Validates that the brokerage/slippage models from Phase 1 match real execution within 5% |
+| 4.7 | Win/loss trade journal | Every trade logged: strategy name, signal source, sentiment at entry, risk rule verdicts, entry/exit price, slippage, brokerage cost |
+| 4.8 | Trade quality review pipeline | Manual chart review of trade journal exports from backtests and paper trading. Identify trades that passed code filters but are not valid setups on the chart → add new filter rules to `strategy/filters.py`. Estimated effort: ~2-3 days per strategy. Key insight: code doesn't see the chart like a human does — many false positives slip through. Each filter iteration removes bad trades, shrinking the trade set but improving signal quality. The goal is not more trades, it's fewer but better trades |
+| 4.9 | `strategy/filters.py` | Post-signal filter plugins: minimum trend alignment, congestion zone exclusion, news blackout windows, volume confirmation thresholds, etc. Filters are strategy-agnostic and chainable. Estimated effort: ~1 day for framework, ~0.5 day per filter rule |
 
 **Dual-broker flow during Phase 4:**
 ```
@@ -108,6 +115,8 @@ Equity Signal  → Orchestrator → Risk → Dispatcher → Alpaca (paper)
 - Alpaca paper trading for equities runs simultaneously
 - Slippage and fees match paper trading within 5%
 - All trades appear in the trade journal with full provenance
+- Trade journal reviewed manually — false-positive trades identified and filter rules added
+- Strategy backtests re-run with filters show improved win-rate and fewer but higher-quality trades
 - Discord alerts work for both crypto and equity channels
 
 ---

@@ -51,11 +51,26 @@ class MonitoringConfig(BaseModel):
     alerts: AlertsConfig = Field(default_factory=AlertsConfig)
 
 
+class CommissionConfig(BaseModel):
+    maker: float = 0.001
+    taker: float = 0.001
+
+
+class SlippageConfig(BaseModel):
+    basis_points: int = 5
+
+
+class BacktestConfig(BaseModel):
+    commission: CommissionConfig = Field(default_factory=CommissionConfig)
+    slippage: SlippageConfig = Field(default_factory=SlippageConfig)
+
+
 class TradingConfig(BaseModel):
     execution_mode: Literal["dry_run", "paper", "live"] = "dry_run"
     redis: RedisConfig = Field(default_factory=RedisConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     brokers: BrokersConfig = Field(default_factory=BrokersConfig)
+    backtest: BacktestConfig = Field(default_factory=BacktestConfig)
     monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)
 
 

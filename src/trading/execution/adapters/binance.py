@@ -1,5 +1,7 @@
 from collections.abc import Generator
 from datetime import datetime
+from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 
@@ -29,6 +31,25 @@ class BinanceAdapter(AbstractBrokerAdapter):
             headers["X-MBX-APIKEY"] = self.api_key
         return headers
 
+    def _sign(self, params: dict[str, Any]) -> dict[str, Any]:
+        import hashlib
+        import hmac
+
+        params["timestamp"] = int(datetime.now().timestamp() * 1000)
+        query = urlencode(params)
+        signature = hmac.new(
+            self.api_secret.encode("utf-8"),
+            query.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        params["signature"] = signature
+        return params
+
+    def _check_error(self, data: dict[str, Any]) -> None:
+        if "code" in data and data["code"] != 0:
+            msg = data.get("msg", "Unknown error")
+            raise ValueError(f"Binance API error {data['code']}: {msg}")
+
     async def get_bars(
         self, symbol: str, timeframe: str, start: datetime, end: datetime
     ) -> list[Bar]:
@@ -42,9 +63,10 @@ class BinanceAdapter(AbstractBrokerAdapter):
         }
         str_params: dict[str, str] = {k: str(v) for k, v in params.items()}
         resp = await self._client.get("/api/v3/klines", params=str_params)
-        resp.raise_for_status()
+        data = resp.json()
+        self._check_error(data)
         bars: list[Bar] = []
-        for k in resp.json():
+        for k in data:
             bars.append(
                 Bar(
                     symbol=symbol,
@@ -61,9 +83,10 @@ class BinanceAdapter(AbstractBrokerAdapter):
         return bars
 
     async def get_account(self) -> AccountInfo:
-        resp = await self._client.get("/api/v3/account")
-        resp.raise_for_status()
+        params = self._sign({})
+        resp = await self._client.get("/api/v3/account", params=params)
         data = resp.json()
+        self._check_error(data)
         balances = {b["asset"]: float(b["free"]) + float(b["locked"]) for b in data["balances"]}
         total = sum(balances.values())
         return AccountInfo(
@@ -75,20 +98,22 @@ class BinanceAdapter(AbstractBrokerAdapter):
         )
 
     async def get_positions(self) -> list[Position]:
-        return []
+        raise NotImplementedError("get_positions not yet implemented for BinanceAdapter")
 
     async def submit_order(self, order: OrderEvent) -> FillEvent:
-        params = {
-            "symbol": order.symbol.replace("/", ""),
-            "side": order.side.value.upper(),
-            "type": order.order_type.value.upper(),
-            "quantity": str(order.quantity),
-        }
+        params = self._sign(
+            {
+                "symbol": order.symbol.replace("/", ""),
+                "side": order.side.value.upper(),
+                "type": order.order_type.value.upper(),
+                "quantity": str(order.quantity),
+            }
+        )
         if order.price:
             params["price"] = str(order.price)
         resp = await self._client.post("/api/v3/order", params=params)
-        resp.raise_for_status()
         data = resp.json()
+        self._check_error(data)
         return FillEvent(
             symbol=order.symbol,
             side=order.side,
@@ -106,20 +131,13 @@ class BinanceAdapter(AbstractBrokerAdapter):
         )
 
     async def cancel_order(self, order_id: str) -> None:
-        await self._client.delete("/api/v3/order", params={"orderId": order_id})
+        params = self._sign({"orderId": order_id})
+        resp = await self._client.delete("/api/v3/order", params=params)
+        data = resp.json()
+        self._check_error(data)
 
     def stream_bars(self, _symbols: list[str], _timeframe: str) -> Generator[Bar, None, None]:
-        yield Bar(
-            symbol="",
-            asset_class=AssetClass.CRYPTO,
-            timeframe="",
-            open=0.0,
-            high=0.0,
-            low=0.0,
-            close=0.0,
-            volume=0.0,
-            timestamp=datetime.now(),
-        )
+        raise NotImplementedError("stream_bars not yet implemented for BinanceAdapter")
 
     async def get_market_hours(self, _symbol: str) -> MarketHours:
         return MarketHours(always_open=True)
