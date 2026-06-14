@@ -1,0 +1,84 @@
+{
+  "title": "Trading Overview",
+  "uid": "trading-overview",
+  "panels": [
+    {
+      "title": "Portfolio Value",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "trading_portfolio_value",
+          "legendFormat": "Value"
+        }
+      ]
+    },
+    {
+      "title": "Drawdown",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "trading_current_drawdown_pct * 100",
+          "legendFormat": "Drawdown %"
+        }
+      ]
+    },
+    {
+      "title": "Open Positions",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "trading_open_positions"
+        }
+      ]
+    },
+    {
+      "title": "Cash Balance",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 8 },
+      "targets": [
+        {
+          "expr": "trading_cash_balance"
+        }
+      ]
+    },
+    {
+      "title": "Orders Placed",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 8 },
+      "targets": [
+        {
+          "expr": "rate(trading_orders_placed_total[1h])"
+        }
+      ]
+    },
+    {
+      "title": "Order Flow",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        {
+          "expr": "rate(trading_orders_placed_total[5m])",
+          "legendFormat": "Orders"
+        },
+        {
+          "expr": "rate(trading_fills_received_total[5m])",
+          "legendFormat": "Fills"
+        }
+      ]
+    },
+    {
+      "title": "Risk Blocks",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [
+        {
+          "expr": "rate(trading_risk_blocks_total[5m])",
+          "legendFormat": "{{rule}}"
+        }
+      ]
+    }
+  ]
+}

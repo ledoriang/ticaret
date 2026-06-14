@@ -1,0 +1,38 @@
+{
+  "title": "Risk Metrics",
+  "uid": "trading-risk",
+  "panels": [
+    {
+      "title": "Drawdown",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "trading_current_drawdown_pct * 100",
+          "legendFormat": "Drawdown %"
+        }
+      ]
+    },
+    {
+      "title": "Exposure",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 4, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "trading_open_positions * 100 / (trading_portfolio_value > 0 or 1)"
+        }
+      ]
+    },
+    {
+      "title": "Risk Blocks by Rule",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum by (rule) (trading_risk_blocks_total)",
+          "legendFormat": "{{rule}}"
+        }
+      ]
+    }
+  ]
+}

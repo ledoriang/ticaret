@@ -44,8 +44,10 @@ Data:
   seed [opts]       Shortcut for db seed
   backfill [opts]   Shortcut for db backfill
 
-Backtest & shell:
+Trading:
   backtest [opts]   Run backtest (forwards args to trading CLI)
+  paper-trade [opts] Paper-trade a strategy via paper adapter
+  list-strategies   List registered strategies
   shell             Drop into Python REPL with trading package
   setup             Initial project setup (Python install, deps sync, rust stub build)
 
@@ -125,11 +127,17 @@ case "${1:-help}" in
         ;;
     backtest)
         shift
-        # Strip -- separator if present (forwarded as literal arg by shell)
         if [[ $# -gt 0 && "$1" == "--" ]]; then
             shift
         fi
         uv run trading backtest "$@"
+        ;;
+    paper-trade|papertrade)
+        shift
+        uv run trading paper-trade "$@"
+        ;;
+    list-strategies|strategies)
+        uv run trading list-strategies
         ;;
     shell)
         uv run python -c "import trading; print('trading package imported successfully')" && uv run python
