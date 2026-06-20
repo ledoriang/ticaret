@@ -4,12 +4,15 @@ from typing import Any
 from urllib.parse import urlencode
 
 import httpx
+import structlog
 
 from trading.core.enums import AssetClass
 from trading.core.events import FillEvent, OrderEvent
 from trading.core.market_hours import MarketHours
 from trading.core.models import AccountInfo, Bar, Position
 from trading.execution.adapters.base import AbstractBrokerAdapter
+
+logger = structlog.get_logger(__name__)
 
 
 class BinanceAdapter(AbstractBrokerAdapter):
@@ -98,7 +101,57 @@ class BinanceAdapter(AbstractBrokerAdapter):
         )
 
     async def get_positions(self) -> list[Position]:
-        raise NotImplementedError("get_positions not yet implemented for BinanceAdapter")
+        params = self._sign({})
+        resp = await self._client.get("/api/v3/account", params=params)
+        data = resp.json()
+        self._check_error(data)
+
+        non_zero: list[dict[str, Any]] = [
+            b for b in data.get("balances", []) if float(b["free"]) + float(b["locked"]) > 0
+        ]
+
+        stablecoins = ("USDT", "BUSD", "USDC", "DAI", "FDUSD")
+        assets_to_price = [b["asset"] for b in non_zero if b["asset"] not in stablecoins]
+
+        prices: dict[str, float] = {}
+        if assets_to_price:
+            try:
+                ticker_resp = await self._client.get("/api/v3/ticker/price")
+                ticker_data = ticker_resp.json()
+                prices = {
+                    item["symbol"]: float(item["price"])
+                    for item in ticker_data
+                    if item["symbol"].endswith("USDT")
+                }
+            except Exception:
+                logger.warning("get_positions_failed_to_fetch_prices")
+
+        positions: list[Position] = []
+        now = datetime.now()
+
+        for bal in non_zero:
+            asset = bal["asset"]
+            if asset in stablecoins:
+                continue
+
+            symbol = f"{asset}USDT"
+            current_price = prices.get(symbol, 0.0)
+            qty = float(bal["free"]) + float(bal["locked"])
+
+            positions.append(
+                Position(
+                    symbol=f"{asset}/USDT",
+                    asset_class=AssetClass.CRYPTO,
+                    quantity=qty,
+                    avg_entry_price=current_price,
+                    current_price=current_price,
+                    realized_pnl=0.0,
+                    timestamp=now,
+                    broker=self.name,
+                )
+            )
+
+        return positions
 
     async def submit_order(self, order: OrderEvent) -> FillEvent:
         params = self._sign(

@@ -1,5 +1,7 @@
 # Broker Protocol & Exchange Adapter Design
 
+> **Note:** The same pluggable pattern (Protocol + registry) is used for news/sentiment providers. See the "News Provider Protocol" section below for details on `NewsProvider`, `PROVIDER_REGISTRY`, and Alpha Vantage / Marketaux / Finnhub / StockGeist / CachedNewsProvider implementations.
+
 ## The Problem
 
 Different brokers have different APIs, authentication methods, rate limits, WebSocket formats, and market conventions. If strategy code or orchestration code directly calls a broker API, switching brokers requires rewriting the entire stack.
@@ -112,6 +114,18 @@ Delete the adapter file, remove it from the registry dict, remove the config sec
 - Paper trading API (`paper: true` in config)
 - NYSE market hours: 09:30–16:00 ET, closed weekends and holidays
 - Pattern Day Trader (PDT) rule awareness in risk manager
+
+### News Provider Protocol (Phase 2)
+
+The same pluggable pattern used for broker adapters applies to news/sentiment providers. A `NewsProvider` Protocol defines the interface, and a `PROVIDER_REGISTRY` dict registers implementations. Adding a new news API = one file + one dict entry.
+
+| Provider | Free Tier | Asset Focus |
+|---|---|---|
+| Alpha Vantage | 25 req/day | Stocks, Crypto, Forex |
+| Marketaux | 100 req/day | Global Stocks, Crypto |
+| Finnhub | 30 req/min | US Equities |
+| StockGeist | Credit-based | US Equities |
+| CachedNewsProvider | Unlimited | All (dev/backtest) |
 
 ### Future Adapters (Not Yet Implemented)
 

@@ -1,12 +1,12 @@
-execution_mode: dry_run
+execution_mode: paper
 
 redis:
-  host: localhost
-  port: 9124
+  host: redis
+  port: 6379
 
 database:
-  host: localhost
-  port: 9125
+  host: timescaledb
+  port: 5432
   name: trading
   user: trading
   password: trading_dev

@@ -37,7 +37,9 @@ All metrics are exposed via `prometheus-client` on a `/metrics` endpoint scraped
 | `trading_order_latency_seconds` | Histogram | broker | Time from signal to order submission |
 | `trading_fill_latency_seconds` | Histogram | broker | Time from order submission to fill |
 | `trading_strategy_eval_seconds` | Histogram | strategy | Time for strategy evaluation |
-| `trading_sentiment_eval_seconds` | Histogram | model | Time for LLM sentiment evaluation |
+| `trading_sentiment_eval_seconds` | Histogram | model, provider | Time for sentiment evaluation (per provider) |
+| `trading_sentiment_poll_total` | Counter | provider, symbol | Total sentiment polls per provider |
+| `trading_sentiment_rate_limit_remaining` | Gauge | provider | Remaining API quota for current period |
 
 ## Grafana Dashboards
 
@@ -65,16 +67,18 @@ Panels:
 - Daily trade count vs maximum allowed (stat panel)
 - Top 10 blocked signals by reason (table)
 
-### Dashboard 3: Sentiment (Phase 3+)
+### Dashboard 3: Sentiment (Phase 2+)
 
-**Purpose:** Monitor LLM sentiment pipeline health and output.
+**Purpose:** Monitor news/sentiment pipeline health and output across all providers.
 
 Panels:
-- Sentiment score distribution (histogram)
-- Sentiment by source (news vs social) over time (line chart)
-- LLM evaluation latency (line chart)
+- Sentiment score distribution per provider (histogram, grouped by provider)
+- Sentiment by source (Alpha Vantage, Marketaux, Finnhub, StockGeist, Cached) over time (line chart)
+- Active provider indicator (stat panel — shows which `sentiment.provider` config is active)
+- Rate limit consumption per provider (gauge — requests used / free tier limit)
 - Confidence score distribution (histogram)
 - Sentiment accuracy vs price movement (scatter plot, retrospective)
+- Sentiment ingester poll latency (line chart)
 
 ### Dashboard 4: System Health
 
@@ -123,12 +127,14 @@ All alerts go to a Discord server with dedicated channels. Each channel has a sp
 - Example: `⚠️ WS DISCONNECT | Binance | Reconnecting...`
 - Example: `🔴 STALE DATA | No bar received for BTC/USDT in 120 seconds`
 
-### Channel: `#sentiment` (Phase 3+)
+### Channel: `#sentiment` (Phase 2+)
 
 - Notable sentiment shifts (score change > 0.3 in 1 hour)
-- LLM pipeline errors (model unavailable, malformed output)
-- Source scraper failures
-- Example: `📊 SENTIMENT SHIFT | BTC | Score: 0.82 → 0.21 | Source: crypto_news | Confidence: 0.71`
+- News provider API errors (429 rate limits, 5xx, malformed response)
+- Provider rate limit warnings (approaching free tier quota)
+- Sentiment ingester service restarts or failures
+- Example: `📊 SENTIMENT SHIFT | BTC | Score: 0.82 → 0.21 | Source: alpha_vantage | Confidence: 0.71`
+- Example: `⚠️ RATE LIMIT | Alpha Vantage | 24/25 requests used today | 1 remaining before reset`
 
 ## Alert Severity Levels
 

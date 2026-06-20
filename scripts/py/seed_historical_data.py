@@ -1,6 +1,8 @@
 """
 Fetch and store historical bars for backtesting.
-Usage: uv run python scripts/seed_historical_data.py --symbol BTC/USDT --start 2020-01-01 --end 2025-01-01
+
+Usage: uv run python scripts/seed_historical_data.py \\
+    --symbol BTC/USDT --start 2020-01-01 --end 2025-01-01
 """
 
 import argparse
@@ -23,6 +25,15 @@ async def main() -> None:
     ingestion = HistoricalIngestion(config)
     bars = await ingestion.fetch_bars(args.symbol, args.timeframe, args.start, args.end)
     print(f"Fetched {len(bars)} bars for {args.symbol}")
+
+    from trading.data.repository import TimescaleRepository
+
+    repo = TimescaleRepository(config.database)
+    await repo.connect()
+    await repo.ensure_schema()
+    count = await repo.bulk_insert_bars(bars)
+    await repo.close()
+    print(f"Inserted {count} bars into TimescaleDB")
 
 
 if __name__ == "__main__":

@@ -20,13 +20,14 @@ usage() {
 Usage: $(basename "$0") <command>
 
 Commands:
-  up           Start all containers, wait for health
-  down         Tear down all containers
-  restart      Down then up
-  logs [svc]   Tail logs (all services or specific one)
-  status       Show container states
-  reset-db     Destroy timescaledb volume and recreate
-  help         Show this help
+  up             Start all containers, wait for health (builds if needed)
+  build          Build (or rebuild) the trading-engine image
+  down           Tear down all containers
+  restart        Down then up
+  logs [svc]    Tail logs (all services or specific one)
+  status         Show container states
+  reset-db       Destroy timescaledb volume and recreate
+  help           Show this help
 EOF
     exit 1
 }
@@ -50,14 +51,20 @@ healthcheck() {
                 fi
                 ;;
             prometheus)
-                if curl -sf http://localhost:9090/-/healthy >/dev/null 2>&1; then
+                if curl -sf http://localhost:9126/-/healthy >/dev/null 2>&1; then
                     info "prometheus is healthy"
                     return 0
                 fi
                 ;;
             grafana)
-                if curl -sf http://localhost:3000/api/health >/dev/null 2>&1; then
+                if curl -sf http://localhost:9127/api/health >/dev/null 2>&1; then
                     info "grafana is healthy"
+                    return 0
+                fi
+                ;;
+            trading)
+                if curl -sf http://localhost:9123/-/healthy >/dev/null 2>&1; then
+                    info "trading-engine is healthy"
                     return 0
                 fi
                 ;;
@@ -76,9 +83,14 @@ case "${1:-help}" in
         echo "Waiting for services to become healthy..."
         healthcheck redis
         healthcheck timescaledb
+        healthcheck trading
         healthcheck prometheus
         healthcheck grafana
         info "All containers are up and healthy"
+        ;;
+    build)
+        docker compose build trading
+        info "trading-engine image built"
         ;;
     down)
         docker compose down

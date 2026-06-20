@@ -1,9 +1,33 @@
 services:
+  trading:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trading-engine
+    command: ["paper-trade", "--strategy", "sma_crossover", "--symbols", "BTC/USDT", "--config", "/app/configs/docker.yaml"]
+    ports:
+      - "9123:8000"
+    environment:
+      - TRADING_REDIS__HOST=redis
+      - TRADING_DATABASE__HOST=timescaledb
+    depends_on:
+      redis:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import trading"]
+      start_period: 15s
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
   redis:
     image: redis:7-alpine
     container_name: trading-redis
     ports:
-      - "6379:6379"
+      - "9124:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -12,10 +36,10 @@ services:
     restart: unless-stopped
 
   timescaledb:
-    image: timescale/timescaledb:2-pg16
+    image: timescale/timescaledb:2.15.0-pg16
     container_name: trading-timescaledb
     ports:
-      - "5432:5432"
+      - "9125:5432"
     environment:
       POSTGRES_DB: trading
       POSTGRES_USER: trading
@@ -30,33 +54,31 @@ services:
     restart: unless-stopped
 
   prometheus:
-    image: prom/prometheus:v2.52
+    image: quay.io/prometheus/prometheus:v3.11.3-distroless
     container_name: trading-prometheus
     ports:
-      - "9090:9090"
+      - "9126:9090"
     volumes:
-      - ./grafana/provisioning/datasources:/etc/prometheus:ro
+      - ./grafana/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
-      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
-      - "--web.console.templates=/usr/share/prometheus/consoles"
     healthcheck:
-      test: ["CMD", "wget", "-q", "http://localhost:9090/-/healthy"]
-      interval: 10s
-      timeout: 5s
+      test: ["CMD", "/bin/promtool", "check", "web-health", "--web.health-check-url=http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
       retries: 3
+      start_period: 10s
     restart: unless-stopped
 
   grafana:
-    image: grafana/grafana:11.0-enterprise
+    image: grafana/grafana:latest
     container_name: trading-grafana
     ports:
-      - "3000:3000"
+      - "9127:3000"
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
-      GF_INSTALL_PLUGINS: timescaledb-datasource
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
     depends_on:
