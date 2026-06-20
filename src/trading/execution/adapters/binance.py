@@ -1,4 +1,3 @@
-import asyncio
 from collections.abc import AsyncGenerator
 from datetime import datetime
 from typing import Any
@@ -6,7 +5,6 @@ from urllib.parse import urlencode
 
 import httpx
 import structlog
-import websockets
 
 from trading.core.enums import AssetClass
 from trading.core.events import FillEvent, OrderEvent
@@ -198,47 +196,13 @@ class BinanceAdapter(AbstractBrokerAdapter):
     async def stream_bars(
         self, symbols: list[str], timeframe: str
     ) -> AsyncGenerator[Bar, None]:
-        interval = self._to_binance_interval(timeframe)
-        streams = [f"{s.replace('/', '').lower()}@kline_{interval}" for s in symbols]
-        url = f"{self._ws_url}/{'/'.join(streams)}"
+        from trading.data.feeds.binance import BinanceFeedHandler
+        from trading.data.feeds.shovel import WebSocketShovel
 
-        retry_delay = 1.0
-        max_retry = 60.0
-
-        while True:
-            try:
-                async with websockets.connect(url, ping_interval=20) as ws:
-                    retry_delay = 1.0
-                    async for raw in ws:
-                        import json
-
-                        data = json.loads(raw)
-                        k = data.get("k", {})
-                        if k.get("x", False):
-                            symbol = data.get("s", "")
-                            if len(symbol) > 3:
-                                symbol = f"{symbol[:-4]}/{symbol[-4:]}"
-                            else:
-                                symbol = f"{symbol}/USDT"
-                            bar = Bar(
-                                symbol=symbol,
-                                asset_class=AssetClass.CRYPTO,
-                                timeframe=timeframe,
-                                open=float(k["o"]),
-                                high=float(k["h"]),
-                                low=float(k["l"]),
-                                close=float(k["c"]),
-                                volume=float(k["v"]),
-                                timestamp=datetime.fromtimestamp(k["T"] / 1000),
-                            )
-                            yield bar
-            except websockets.ConnectionClosed:
-                logger.warning("ws_disconnected", delay=retry_delay)
-            except Exception:
-                logger.exception("ws_error", delay=retry_delay)
-
-            await asyncio.sleep(retry_delay)
-            retry_delay = min(retry_delay * 2, max_retry)
+        handler = BinanceFeedHandler(ws_url=self._ws_url)
+        shovel = WebSocketShovel(handler)
+        async for bar in shovel.stream(symbols, timeframe):
+            yield bar
 
     async def get_market_hours(self, _symbol: str) -> MarketHours:
         return MarketHours(always_open=True)
