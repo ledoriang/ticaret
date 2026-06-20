@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from collections.abc import Generator
+from collections.abc import AsyncGenerator
 from datetime import datetime
 
 from trading.core.enums import AssetClass
@@ -30,7 +30,9 @@ class AbstractBrokerAdapter(ABC):
     async def cancel_order(self, order_id: str) -> None: ...
 
     @abstractmethod
-    def stream_bars(self, symbols: list[str], timeframe: str) -> Generator[Bar, None, None]: ...
+    def stream_bars(
+        self, symbols: list[str], timeframe: str
+    ) -> AsyncGenerator[Bar, None]: ...
 
     @abstractmethod
     async def get_market_hours(self, symbol: str) -> MarketHours: ...
