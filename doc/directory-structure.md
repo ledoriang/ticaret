@@ -61,15 +61,17 @@ ticaret/
 │   │   ├── __init__.py
 │   │   ├── base.py                      # Abstract Strategy — on_data(bars, sentiment) -> SignalEvent | None
 │   │   ├── registry.py                  # Strategy registry (plugin pattern)
-│   │   ├── sma_crossover.py             # SMA crossover (Phase 1 strategy)
-│   │   ├── rsi_mean_reversion.py        # RSI mean-reversion (Phase 2 strategy)
-│   │   ├── sentiment_enhanced.py        # SMA + sentiment filter (Phase 2 strategy)
-│   │   └── filters.py                   # Post-signal filter plugins (Phase 3)
+│   │   ├── sma_crossover.py             # SMA crossover + ATR stop loss (Phase 2 strategy)
+│   │   ├── rsi_mean_reversion.py        # RSI mean-reversion + swing stop (Phase 2 strategy)
+│   │   ├── sentiment_enhanced.py        # SMA + sentiment filter + ATR stop (Phase 2 strategy)
+│   │   └── filters.py                   # Quality filter framework + chainable filters (Phase 2)
 │   │
 │   ├── risk/                            # Risk management
 │   │   ├── __init__.py
 │   │   ├── manager.py                   # RiskManager — evaluates all rules before approving
-│   │   └── rules.py                     # Individual risk rule classes
+│   │   ├── rules.py                     # Individual risk rule classes (incl StopLossValidationRule,
+│   │   │                                #   DailyDrawdownCircuitBreaker)
+│   │   └── regime_filter.py             # Market regime filter (ATR%, ADX, tradeable classification)
 │   │
 │   ├── execution/                       # Broker abstraction and adapters
 │   │   ├── __init__.py
@@ -86,10 +88,11 @@ ticaret/
 │   │
 │   ├── orchestration/                   # Event bus, central coordinator, runtime control
 │   │   ├── __init__.py
-│   │   ├── bus.py                       # Redis Pub/Sub event bus (publish/subscribe/topics)
+│   │   ├── bus.py                       # Redis Pub/Sub event bus (publish/subscribe/topics/patterns)
 │   │   ├── orchestrator.py              # Central coordinator (air traffic controller)
 │   │   ├── bar_buffer.py               # Rolling window per symbol, sized to strategy lookback
-│   │   └── commands.py                  # CommandEvent model + runtime command handlers
+│   │   ├── commands.py                  # CommandEvent model + runtime command handlers
+│   │   └── exit_manager.py              # Monitors open positions, executes stop-loss/trailing/take-profit/time exits
 │   │
 │   ├── services/                        # Long-running background services
 │   │   ├── __init__.py
@@ -97,11 +100,15 @@ ticaret/
 │   │
 │   ├── backtest/                        # Backtesting engine
 │   │   ├── __init__.py
-│   │   ├── runner.py                    # Vectorbt integration — accepts --source adapter|db
+│   │   ├── runner.py                    # Accepts --source adapter|db, runs filters + exits during backtest
 │   │   ├── metrics.py                   # Sharpe, drawdown, PnL, Sortino, win rate
 │   │   ├── brokerage.py                 # Commission model (per-broker maker/taker rates)
 │   │   ├── slippage.py                  # Slippage model (per asset class, basis points)
-│   │   └── trade_journal.py             # Detailed trade log per fill
+│   │   ├── trade_journal.py             # Detailed trade log per fill (incl MAE/MFE/hold time/R:R)
+│   │   ├── walk_forward.py              # Walk-forward analysis (in-sample/out-of-sample windows)
+│   │   ├── regime_report.py             # Per-regime performance breakdown
+│   │   ├── excursion.py                 # MAE/MFE analysis (max adverse/favorable excursion per trade)
+│   │   └── stop_analysis.py             # Stop-loss hit rate, R:R distribution, hold time stats
 │   │
 │   ├── monitoring/                      # Observability
 │   │   ├── __init__.py
