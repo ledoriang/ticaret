@@ -8,7 +8,7 @@ from redis.asyncio.client import PubSub
 from trading.core.config import RedisConfig
 from trading.core.events import BaseEvent
 
-EventHandler = Callable[[BaseEvent], Awaitable[None]]
+EventHandler = Callable[[BaseEvent], Awaitable[None] | None]
 
 
 class EventBus:
@@ -28,12 +28,23 @@ class EventBus:
         self._handlers.setdefault(topic, []).append(handler)
 
     async def _process_message(self, topic: str, data: str) -> None:
-        from trading.core.events import FillEvent, OrderEvent, RiskBlockEvent, SignalEvent
+        from trading.core.events import (
+            BarEvent,
+            CommandEvent,
+            FillEvent,
+            OrderEvent,
+            RiskBlockEvent,
+            SentimentEvent,
+            SignalEvent,
+        )
 
         event_map: dict[str, type[BaseEvent]] = {
-            "signal": SignalEvent,
-            "order": OrderEvent,
-            "fill": FillEvent,
+            "bars": BarEvent,
+            "signals": SignalEvent,
+            "orders": OrderEvent,
+            "fills": FillEvent,
+            "sentiment": SentimentEvent,
+            "commands": CommandEvent,
             "risk_block": RiskBlockEvent,
         }
         topic_prefix = topic.split(":")[0]
@@ -42,7 +53,9 @@ class EventBus:
             return
         event = event_cls.model_validate_json(data)
         for handler in self._handlers.get(topic, []):
-            await handler(event)
+            result = handler(event)
+            if asyncio.iscoroutine(result):
+                await result
 
     async def start(self) -> None:
         pubsub = self._redis.pubsub()
@@ -64,8 +77,8 @@ class EventBus:
             self._listener_task.cancel()
         if self._pubsub:
             await self._pubsub.unsubscribe()
-            await self._pubsub.close()
-        await self._redis.close()
+            await self._pubsub.aclose()  # type: ignore[no-untyped-call]
+        await self._redis.aclose()
 
     @property
     def is_running(self) -> bool:

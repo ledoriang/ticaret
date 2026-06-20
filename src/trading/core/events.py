@@ -13,6 +13,7 @@ class BaseEvent(BaseModel):
     source: str = ""
     timestamp: datetime = Field(default_factory=datetime.now)
     asset_class: AssetClass = AssetClass.CRYPTO
+    event_schema_version: int = 1
 
 
 class SignalEvent(BaseEvent):
@@ -61,6 +62,11 @@ class SentimentEvent(BaseEvent):
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     source: str = ""
     summary: str = ""
+
+
+class CommandEvent(BaseEvent):
+    command: str
+    payload: dict[str, Any] = Field(default_factory=dict)
 
 
 class RiskBlockEvent(BaseEvent):
