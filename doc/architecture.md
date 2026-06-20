@@ -48,13 +48,13 @@ The trading stack is structured as four distinct layers communicating through an
    ┌──────────┐    ┌──────────────┐    ┌───────────┐
    │ Live     │    │ Orchestrator │    │ Sentiment  │
    │ Stream   │    │              │    │ Ingester   │
-   │ (WS)     │    │ ┌──────────┐ │    │ (service)  │
-   └────┬─────┘    │ │ BarBuffer│ │    └─────┬─────┘
-        │          │ │ (deque)  │ │          │
-        │ bars:*   │ └──────────┘ │          │sentiment:*
-        │          │      │       │          │
-        │          │ ┌────┴─────┐ │          │
-        │          │ │ Strat(s) │ │          │
+   │          │    │ ┌──────────┐ │    │ (service)  │
+   │ ┌──────┐ │    │ │ BarBuffer│ │    └─────┬─────┘
+   │ │Shovel │ │    │ │ (deque)  │ │          │
+   │ └──┬───┘ │    │ └──────────┘ │          │sentiment:*
+   │    │     │    │      │       │          │
+   └────┼─────┘    │ ┌────┴─────┐ │          │
+        │ bars:*   │ │ Strat(s) │ │          │
         │          │ └────┬─────┘ │          │
         │          │ ┌────┴─────┐ │          │
         │          │ │  Risk    │ │          │
@@ -77,8 +77,19 @@ The trading stack is structured as four distinct layers communicating through an
    ┌────────┐┌────────┐┌────────┐┌──────────┐│
    │Binance ││ Paper  ││ Alpaca ││(future)  ││
    │Adapter ││Adapter ││Adapter ││ adapters ││
-   │(REST+WS)││       ││(Ph. 3) ││         ││
+   │(REST)  ││        ││(Ph. 3) ││         ││
    └────────┘└────────┘└────────┘└──────────┘│
+        │                                    │
+        v                                    │
+   ┌──────────┐                              │
+   │Feed      │                              │
+   │Handlers  │                              │
+   │┌────────┐│                              │
+   ││Binance ││                              │
+   ││Coinbase││                              │
+   ││Kraken  ││                              │
+   │└────────┘│                              │
+   └──────────┘                              │
                                              │
                     ┌─────────────────────────┘
                     │
@@ -112,10 +123,81 @@ All events carry `_event_schema_version: int` (currently `1`) for forward compat
 
 ## Layer 1: Data & Identification
 
+### WebSocket Feed Infrastructure
+
+The system uses a **universal WebSocket "shovel"** that handles connection lifecycle for any WebSocket data feed. The shovel manages the plumbing (connect, reconnect, ping/pong, backoff) while feed-specific logic (URL construction, message parsing, subscribe framing) is delegated to pluggable handlers. This mirrors the `BrokerProtocol` pattern for brokers and the `NewsProvider` pattern for sentiment.
+
+```
+┌─────────────────────────────────────────┐
+│            LiveStream                   │
+│  (wraps shovel, publishes BarEvent)     │
+└──────────────┬──────────────────────────┘
+               │
+               v
+┌─────────────────────────────────────────┐
+│         WebSocketShovel                 │
+│  (universal connection manager)         │
+│  - connect / reconnect / backoff        │
+│  - ping/pong keepalive                  │
+│  - dynamic subscribe/unsubscribe        │
+│  - message dispatch to handler          │
+│  - per-symbol stream management         │
+└──────────────┬──────────────────────────┘
+               │
+               v
+┌─────────────────────────────────────────┐
+│       FeedHandler (Protocol)            │
+│  - build_url(symbols, timeframe) -> str │
+│  - parse_message(raw) -> Bar | None     │
+│  - build_subscribe(symbols) -> str|None │
+│  - build_unsubscribe(symbols)-> str|None│
+│  - is_closed_message(raw) -> bool       │
+└──────────────┬──────────────────────────┘
+               │
+        ┌──────┴───────┬──────────┐
+        v              v          v
+┌────────────┐ ┌────────────┐ ┌────────────┐
+│ Binance    │ │ Coinbase   │ │ Kraken     │
+│ FeedHandler│ │ FeedHandler│ │ FeedHandler│
+│ (kline)    │ │ (ticker)   │ │ (trade)    │
+└────────────┘ └────────────┘ └────────────┘
+```
+
+**`WebSocketShovel`** (`data/feeds/shovel.py`):
+- Universal async generator that yields `Bar` objects from any WebSocket feed
+- Exponential backoff reconnection (1s → 2s → 4s → ... → 60s max)
+- Ping/pong keepalive via `websockets` library
+- Dynamic subscribe/unsubscribe via control frames (when supported by the feed handler)
+- The shovel has zero knowledge of Binance, Coinbase, or any specific exchange — it only knows how to connect, read, and reconnect
+
+**`FeedHandler` protocol** (`data/feeds/base.py`):
+- `build_url(symbols, timeframe) -> str` — constructs the WebSocket URL for the specific exchange
+- `parse_message(raw: str) -> Bar | None` — parses a raw WS message into a `Bar`, returns `None` for non-bar messages (e.g., subscription confirmations)
+- `build_subscribe(symbols) -> str | None` — builds a SUBSCRIBE control frame (or `None` if the feed uses URL-based subscription)
+- `build_unsubscribe(symbols) -> str | None` — builds an UNSUBSCRIBE control frame
+- `is_closed_message(raw: str) -> bool` — returns `True` if the message indicates the connection should be closed
+
+**Concrete handlers:**
+- `BinanceFeedHandler` (`data/feeds/binance.py`) — Binance kline streams, URL-based subscription, kline message parsing
+- Future: `CoinbaseFeedHandler`, `KrakenFeedHandler`, etc. — one file + one registry entry each
+
+**Feed handler registry** (`data/feeds/__init__.py`):
+- `FEED_HANDLER_REGISTRY: dict[str, type[FeedHandler]]` — same pattern as `ADAPTER_REGISTRY` and `PROVIDER_REGISTRY`
+- Adding a new WebSocket feed = one handler file + one dict entry
+
+The broker adapter delegates `stream_bars()` to the shovel:
+```python
+class BinanceAdapter(AbstractBrokerAdapter):
+    async def stream_bars(self, symbols, timeframe):
+        handler = BinanceFeedHandler(ws_url=self._ws_url)
+        shovel = WebSocketShovel(handler)
+        async for bar in shovel.stream(symbols, timeframe):
+            yield bar
+```
+
 ### Technical Analysis
 - Use **pandas-ta** or **TA-Lib** (C++ with Python wrappers). Never write indicator math from scratch.
-- Indicators are computed on bars fetched from TimescaleDB (historical) or streamed via Binance WebSocket kline streams (live).
-- **Live streaming:** BinanceAdapter implements `stream_bars()` as an **async generator** over Binance WebSocket `wss://stream.binance.com:9443/ws/{symbol}@kline_{interval}`. Multi-symbol subscription, auto-reconnect with exponential backoff, ping/pong keepalive.
+- Indicators are computed on bars fetched from TimescaleDB (historical) or streamed via the WebSocket shovel (live).
 - Bars emitted by the WebSocket stream are published to `bars:{symbol}` topics on the EventBus.
 - Output: vectorized DataFrames consumed by strategy modules.
 

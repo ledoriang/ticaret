@@ -38,6 +38,7 @@ Retail algorithmic traders fail most often from poor execution infrastructure, b
 | Initial broker | Binance (crypto) |
 | Second broker | Alpaca (US equities) |
 | Broker abstraction | `BrokerProtocol` — pluggable, config-driven |
+| WebSocket feeds | `WebSocketShovel` (universal) + `FeedHandler` protocol (exchange-specific). Adding a new exchange's WS feed = one handler file + one registry entry |
 | News/sentiment providers | Pluggable `NewsProvider` protocol — Alpha Vantage, Marketaux, Finnhub, StockGeist, CachedNewsProvider |
 | News abstraction | `NewsProvider` — pluggable, config-driven, same pattern as `BrokerProtocol` |
 | PyO3 | Scaffolded in Phase 1, implemented in Phase 4 (conditional) |
@@ -80,6 +81,20 @@ The system consumes news APIs that already include sentiment values — no self-
 All providers enforce their rate limits in code via token-bucket limiters. A `CachedNewsProvider` returns canned payloads from a YAML fixture for development and backtesting — zero API quota burn. Config flag `sentiment.provider` flips between `cached` and any real provider.
 
 Sentiment events flow through the same EventBus as bars and signals. Every SentimentEvent is persisted to TimescaleDB (`news_sentiment` hypertable) for traceability and backtest replay.
+
+## WebSocket Feed Infrastructure
+
+The system uses a **universal WebSocket "shovel"** — a modular connection manager that handles any WebSocket data feed. The shovel manages connection lifecycle (connect, reconnect, ping/pong, backoff) while feed-specific logic (URL construction, message parsing, subscribe framing) is delegated to pluggable handlers.
+
+This is the same pluggable pattern used throughout the system:
+
+| Pattern | Protocol | Registry | Adding new = |
+|---|---|---|---|
+| Brokers | `BrokerProtocol` | `ADAPTER_REGISTRY` | one adapter file + dict entry |
+| WebSocket feeds | `FeedHandler` | `FEED_HANDLER_REGISTRY` | one handler file + dict entry |
+| News/sentiment | `NewsProvider` | `PROVIDER_REGISTRY` | one provider file + dict entry |
+
+The `WebSocketShovel` has zero knowledge of any specific exchange. Adding Coinbase or Kraken WebSocket feeds = one handler file that implements `build_url()`, `parse_message()`, and optional `build_subscribe()` / `build_unsubscribe()`. No changes to the shovel, LiveStream, or orchestrator.
 
 ## Containerization
 
