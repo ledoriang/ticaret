@@ -1,4 +1,4 @@
-from collections.abc import Generator
+from collections.abc import AsyncGenerator
 from datetime import datetime
 from uuid import uuid4
 
@@ -102,7 +102,9 @@ class PaperAdapter(AbstractBrokerAdapter):
     async def cancel_order(self, order_id: str) -> None:
         pass
 
-    def stream_bars(self, _symbols: list[str], _timeframe: str) -> Generator[Bar, None, None]:
+    async def stream_bars(
+        self, _symbols: list[str], _timeframe: str
+    ) -> AsyncGenerator[Bar, None]:
         yield Bar(
             symbol="",
             asset_class=AssetClass.CRYPTO,
@@ -114,6 +116,7 @@ class PaperAdapter(AbstractBrokerAdapter):
             volume=0.0,
             timestamp=datetime.now(),
         )
+        return
 
     async def get_market_hours(self, _symbol: str) -> MarketHours:
         return MarketHours(always_open=True)

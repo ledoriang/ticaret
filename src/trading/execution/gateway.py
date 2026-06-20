@@ -1,4 +1,4 @@
-from collections.abc import Generator
+from collections.abc import AsyncGenerator
 from datetime import datetime
 from typing import Protocol
 
@@ -24,6 +24,8 @@ class BrokerProtocol(Protocol):
 
     async def cancel_order(self, order_id: str) -> None: ...
 
-    def stream_bars(self, symbols: list[str], timeframe: str) -> Generator[Bar, None, None]: ...
+    def stream_bars(
+        self, symbols: list[str], timeframe: str
+    ) -> AsyncGenerator[Bar, None]: ...
 
     async def get_market_hours(self, symbol: str) -> MarketHours: ...
