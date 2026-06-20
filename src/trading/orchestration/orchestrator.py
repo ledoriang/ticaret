@@ -24,7 +24,9 @@ from trading.orchestration.bar_buffer import BarBuffer
 from trading.orchestration.bus import EventBus
 from trading.orchestration.commands import CommandHandler
 from trading.risk.manager import RiskManager
+from trading.risk.regime_filter import RegimeFilter
 from trading.strategy.base import Strategy
+from trading.strategy.filters import SignalFilter
 from trading.strategy.registry import StrategyRegistry
 
 logger = structlog.get_logger(__name__)
@@ -50,6 +52,8 @@ class Orchestrator:
         self.paper_adapter = paper_adapter
         self._strategies: dict[str, Strategy] = {}
         self._symbols: list[str] = []
+        self._filters: list[SignalFilter] = []
+        self._regime_filter: RegimeFilter | None = None
         self._running = False
         self._command_handler = CommandHandler(self)
 
@@ -57,6 +61,12 @@ class Orchestrator:
         cls = StrategyRegistry.get(name)
         self._strategies[name] = cls(**kwargs)
         logger.info("strategy_loaded", name=name)
+
+    def set_filters(self, filters: list[SignalFilter]) -> None:
+        self._filters = filters
+
+    def set_regime_filter(self, regime_filter: RegimeFilter) -> None:
+        self._regime_filter = regime_filter
 
     async def start(self) -> None:
         self._running = True
@@ -145,6 +155,39 @@ class Orchestrator:
             if result.signal:
                 result.signal.source = name
                 result.signal.correlation_id = bar.correlation_id or bar.event_id
+
+                # Run quality filters
+                filter_passed = True
+                for filt in self._filters:
+                    passed, reason = await filt.evaluate(df, result.signal)
+                    if not passed:
+                        logger.info(
+                            "signal_filtered",
+                            filter=filt.name,
+                            reason=reason,
+                            strategy=name,
+                            symbol=bar.symbol,
+                        )
+                        filter_passed = False
+                        break
+
+                if not filter_passed:
+                    continue
+
+                # Run regime filter
+                if self._regime_filter is not None:
+                    regime_passed, regime_reason = await self._regime_filter.check(
+                        df, result.signal
+                    )
+                    if not regime_passed:
+                        logger.info(
+                            "signal_regime_blocked",
+                            reason=regime_reason,
+                            strategy=name,
+                            symbol=bar.symbol,
+                        )
+                        continue
+
                 strategy_signals.labels(strategy=name, side=result.signal.side.value).inc()
                 if self.event_bus:
                     await self.event_bus.publish(f"signals:{bar.symbol}", result.signal)
@@ -174,6 +217,12 @@ class Orchestrator:
             return
 
         portfolio_value = await self._get_portfolio_value()
+
+        # Update circuit breaker with current portfolio value
+        for rule in self.risk_manager.rules:
+            if hasattr(rule, "update_portfolio_value") and callable(rule.update_portfolio_value):
+                rule.update_portfolio_value(portfolio_value)
+
         entry_price = signal.entry_price or signal.price or 0.0
         stop_price = signal.stop_loss_price
         if entry_price <= 0 or stop_price is None:
