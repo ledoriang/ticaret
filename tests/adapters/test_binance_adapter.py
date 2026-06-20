@@ -91,8 +91,10 @@ class TestBinanceAdapter:
                 ]
             )
             bars = await adapter.get_bars(
-                "BTC/USDT", "1d",
-                datetime(2021, 1, 1), datetime(2021, 1, 3),
+                "BTC/USDT",
+                "1d",
+                datetime(2021, 1, 1),
+                datetime(2021, 1, 3),
             )
             assert len(bars) == 2
             assert bars[0].symbol == "BTC/USDT"

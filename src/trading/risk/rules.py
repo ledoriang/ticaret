@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
+from typing import Any
 
 from trading.core.events import SignalEvent
 
@@ -9,6 +10,11 @@ class RiskRule(ABC):
 
     @abstractmethod
     async def evaluate(self, signal: SignalEvent) -> tuple[bool, str]: ...
+
+    def update_params(self, **params: Any) -> None:
+        for key, value in params.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
 
 
 class MaxDrawdownRule(RiskRule):

@@ -23,6 +23,7 @@ class TestEventBus:
         await bus._redis.time()
         await bus._pubsub.get_message(timeout=2.0) if bus._pubsub else None
         import asyncio
+
         await asyncio.sleep(0.2)
         assert len(received) == 1
         ev = received[0]
@@ -38,6 +39,7 @@ class TestEventBus:
         await bus.start()
         await bus.publish("orders:BTC/USDT", sample_order)
         import asyncio
+
         await asyncio.sleep(0.2)
         assert len(received) == 1
         ev = received[0]
@@ -50,6 +52,7 @@ class TestEventBus:
         await bus.start()
         await bus.publish("fills:BTC/USDT", sample_fill)
         import asyncio
+
         await asyncio.sleep(0.2)
         assert len(received) == 1
         ev = received[0]
@@ -62,6 +65,7 @@ class TestEventBus:
         await bus.start()
         await bus.publish("bars:BTC/USDT", sample_bar)
         import asyncio
+
         await asyncio.sleep(0.2)
         assert len(received) == 1
         ev = received[0]
@@ -74,6 +78,7 @@ class TestEventBus:
         await bus.start()
         await bus.publish("sentiment:BTC/USDT", sample_sentiment)
         import asyncio
+
         await asyncio.sleep(0.2)
         assert len(received) == 1
         ev = received[0]
@@ -87,6 +92,7 @@ class TestEventBus:
         await bus.start()
         await bus.publish("commands:*", sample_command)
         import asyncio
+
         await asyncio.sleep(0.2)
         assert len(received) == 1
         ev = received[0]
@@ -100,6 +106,7 @@ class TestEventBus:
         await bus.start()
         await bus.publish("risk_block:BTC/USDT", sample_risk_block)
         import asyncio
+
         await asyncio.sleep(0.2)
         assert len(received) == 1
         ev = received[0]
@@ -120,6 +127,7 @@ class TestEventBus:
         await bus.start()
         await bus.publish("signals:BTC/USDT", sample_signal)
         import asyncio
+
         await asyncio.sleep(0.2)
         assert len(received) == 1
         assert received[0].correlation_id == "test-corr-123"
@@ -131,6 +139,7 @@ class TestEventBus:
         # Publish invalid JSON — system should not crash
         await bus._redis.publish("signals:BTC/USDT", "not valid json{{{")
         import asyncio
+
         await asyncio.sleep(0.2)
         # Handler should not have been called
         assert len(received) == 0
@@ -151,6 +160,7 @@ class TestEventBus:
             ),
         )
         import asyncio
+
         await asyncio.sleep(0.2)
         # Handler for signals should not have been called
         assert len(received) == 0
@@ -175,6 +185,7 @@ class TestEventBus:
         await bus.start()
         await bus.publish("bars:BTC/USDT", sample_bar)
         import asyncio
+
         await asyncio.sleep(0.2)
         assert len(signal_received) == 0
         assert len(bar_received) == 1
