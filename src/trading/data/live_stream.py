@@ -47,3 +47,15 @@ class LiveStream:
     async def stop(self) -> None:
         self._running = False
         logger.info("live_stream_stopped")
+
+    async def add_symbol(self, symbol: str, timeframe: str | None = None) -> None:
+        if symbol not in self._symbols:
+            self._symbols.append(symbol)
+            if timeframe:
+                self._timeframe = timeframe
+            logger.info("live_stream_symbol_added", symbol=symbol)
+
+    async def remove_symbol(self, symbol: str) -> None:
+        if symbol in self._symbols:
+            self._symbols.remove(symbol)
+            logger.info("live_stream_symbol_removed", symbol=symbol)
