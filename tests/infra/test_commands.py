@@ -165,9 +165,7 @@ class TestCommandHandler:
 
     async def test_handle_unknown_command(self, orch: Orchestrator) -> None:
         handler = CommandHandler(orch)
-        await handler.handle(
-            CommandEvent(command="unknown_cmd", payload={}, source="test")
-        )
+        await handler.handle(CommandEvent(command="unknown_cmd", payload={}, source="test"))
         # no error, silently ignored
 
     async def test_orchestrator_subscribes_to_commands(self, orch: Orchestrator) -> None:
