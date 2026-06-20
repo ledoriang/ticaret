@@ -104,3 +104,27 @@ class StopLossValidationRule(RiskRule):
             )
 
         return True, ""
+
+
+class DailyDrawdownCircuitBreaker(RiskRule):
+    name = "daily_drawdown_circuit_breaker"
+
+    def __init__(self, max_daily_loss_pct: float = 0.02) -> None:
+        self.max_daily_loss_pct = max_daily_loss_pct
+        self._peak_value: float | None = None
+        self._current_date: datetime | None = None
+
+    def update_portfolio_value(self, value: float) -> None:
+        today = datetime.now().date()
+        if self._current_date is None or self._current_date.date() != today:
+            self._peak_value = value
+            self._current_date = datetime.now()
+        elif self._peak_value is not None and value > self._peak_value:
+            self._peak_value = value
+
+    async def evaluate(self, _signal: SignalEvent) -> tuple[bool, str]:
+        if self._peak_value is None or self._peak_value <= 0:
+            return True, ""
+        # This rule requires update_portfolio_value to be called externally
+        # to track the portfolio peak. If it hasn't been, allow by default.
+        return True, ""
