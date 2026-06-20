@@ -197,11 +197,11 @@ class BinanceAdapter(AbstractBrokerAdapter):
         self, symbols: list[str], timeframe: str
     ) -> AsyncGenerator[Bar, None]:
         from trading.data.feeds.binance import BinanceFeedHandler
-        from trading.data.feeds.shovel import WebSocketShovel
+        from trading.data.feeds.feed import WebSocketFeed
 
         handler = BinanceFeedHandler(ws_url=self._ws_url)
-        shovel = WebSocketShovel(handler)
-        async for bar in shovel.stream(symbols, timeframe):
+        feed = WebSocketFeed(handler)
+        async for bar in feed.stream(symbols, timeframe):
             yield bar
 
     async def get_market_hours(self, _symbol: str) -> MarketHours:

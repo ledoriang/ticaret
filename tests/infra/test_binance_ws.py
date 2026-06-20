@@ -96,8 +96,8 @@ async def _mock_ws_two_bars(ws):
 
 
 @pytest.mark.asyncio
-class TestBinanceAdapterWithShovel:
-    """Integration tests via BinanceAdapter (delegates to shovel)."""
+class TestBinanceAdapterWithWebSocketFeed:
+    """Integration tests via BinanceAdapter (delegates to WebSocketFeed)."""
 
     async def test_stream_bars_yields_bar(self):
         adapter = BinanceAdapter(testnet=True)

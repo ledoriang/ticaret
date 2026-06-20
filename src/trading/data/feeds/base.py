@@ -13,7 +13,7 @@ class FeedHandler(Protocol):
     - Kline vs ticker vs trade data
 
     A FeedHandler implementation encapsulates all of these differences.
-    The WebSocketShovel calls these methods to connect, parse, and manage
+    The WebSocketFeed calls these methods to connect, parse, and manage
     the feed — it has zero knowledge of the specific exchange.
     """
 

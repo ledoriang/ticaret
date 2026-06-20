@@ -15,17 +15,17 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 
-class WebSocketShovel:
+class WebSocketFeed:
     """Universal WebSocket connection manager.
 
-    The shovel handles connection lifecycle: connect, reconnect with
-    exponential backoff, ping/pong keepalive, and message dispatch.
-    It has zero knowledge of any specific exchange — all exchange-specific
-    logic is delegated to a FeedHandler.
+    Manages connection lifecycle: connect, reconnect with exponential
+    backoff, ping/pong keepalive, and message dispatch.  It has zero
+    knowledge of any specific exchange — all exchange-specific logic is
+    delegated to a FeedHandler.
 
     Usage:
-        shovel = WebSocketShovel(handler)
-        async for bar in shovel.stream(["BTC/USDT"], "1m"):
+        feed = WebSocketFeed(handler)
+        async for bar in feed.stream(["BTC/USDT"], "1m"):
             process(bar)
     """
 
@@ -66,13 +66,13 @@ class WebSocketShovel:
                             yield bar
 
             except websockets.ConnectionClosed:
-                logger.warning("shovel_disconnected", delay=self._retry_delay)
+                logger.warning("feed_disconnected", delay=self._retry_delay)
             except asyncio.CancelledError:
                 raise
             except GeneratorExit:
                 raise
             except Exception:
-                logger.exception("shovel_error", delay=self._retry_delay)
+                logger.exception("feed_error", delay=self._retry_delay)
             else:
                 return
 

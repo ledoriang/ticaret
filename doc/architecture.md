@@ -50,7 +50,7 @@ The trading stack is structured as four distinct layers communicating through an
    │ Stream   │    │              │    │ Ingester   │
    │          │    │ ┌──────────┐ │    │ (service)  │
    │ ┌──────┐ │    │ │ BarBuffer│ │    └─────┬─────┘
-   │ │Shovel │ │    │ │ (deque)  │ │          │
+   │ │Feed  │ │    │ │ (deque)  │ │          │
    │ └──┬───┘ │    │ └──────────┘ │          │sentiment:*
    │    │     │    │      │       │          │
    └────┼─────┘    │ ┌────┴─────┐ │          │
@@ -125,17 +125,17 @@ All events carry `_event_schema_version: int` (currently `1`) for forward compat
 
 ### WebSocket Feed Infrastructure
 
-The system uses a **universal WebSocket "shovel"** that handles connection lifecycle for any WebSocket data feed. The shovel manages the plumbing (connect, reconnect, ping/pong, backoff) while feed-specific logic (URL construction, message parsing, subscribe framing) is delegated to pluggable handlers. This mirrors the `BrokerProtocol` pattern for brokers and the `NewsProvider` pattern for sentiment.
+The system uses a **universal WebSocket feed connection** that handles connection lifecycle for any WebSocket data feed. The feed manages the plumbing (connect, reconnect, ping/pong, backoff) while feed-specific logic (URL construction, message parsing, subscribe framing) is delegated to pluggable handlers. This mirrors the `BrokerProtocol` pattern for brokers and the `NewsProvider` pattern for sentiment.
 
 ```
 ┌─────────────────────────────────────────┐
 │            LiveStream                   │
-│  (wraps shovel, publishes BarEvent)     │
+│  (wraps feed manager, publishes BarEvent)│
 └──────────────┬──────────────────────────┘
                │
                v
 ┌─────────────────────────────────────────┐
-│         WebSocketShovel                 │
+│         WebSocketFeed                   │
 │  (universal connection manager)         │
 │  - connect / reconnect / backoff        │
 │  - ping/pong keepalive                  │
@@ -163,12 +163,12 @@ The system uses a **universal WebSocket "shovel"** that handles connection lifec
 └────────────┘ └────────────┘ └────────────┘
 ```
 
-**`WebSocketShovel`** (`data/feeds/shovel.py`):
+**`WebSocketFeed`** (`data/feeds/feed.py`):
 - Universal async generator that yields `Bar` objects from any WebSocket feed
 - Exponential backoff reconnection (1s → 2s → 4s → ... → 60s max)
 - Ping/pong keepalive via `websockets` library
 - Dynamic subscribe/unsubscribe via control frames (when supported by the feed handler)
-- The shovel has zero knowledge of Binance, Coinbase, or any specific exchange — it only knows how to connect, read, and reconnect
+- The feed has zero knowledge of Binance, Coinbase, or any specific exchange — it only knows how to connect, read, and reconnect
 
 **`FeedHandler` protocol** (`data/feeds/base.py`):
 - `build_url(symbols, timeframe) -> str` — constructs the WebSocket URL for the specific exchange
@@ -185,19 +185,19 @@ The system uses a **universal WebSocket "shovel"** that handles connection lifec
 - `FEED_HANDLER_REGISTRY: dict[str, type[FeedHandler]]` — same pattern as `ADAPTER_REGISTRY` and `PROVIDER_REGISTRY`
 - Adding a new WebSocket feed = one handler file + one dict entry
 
-The broker adapter delegates `stream_bars()` to the shovel:
+The broker adapter delegates `stream_bars()` to the feed:
 ```python
 class BinanceAdapter(AbstractBrokerAdapter):
     async def stream_bars(self, symbols, timeframe):
         handler = BinanceFeedHandler(ws_url=self._ws_url)
-        shovel = WebSocketShovel(handler)
-        async for bar in shovel.stream(symbols, timeframe):
+        feed = WebSocketFeed(handler)
+        async for bar in feed.stream(symbols, timeframe):
             yield bar
 ```
 
 ### Technical Analysis
 - Use **pandas-ta** or **TA-Lib** (C++ with Python wrappers). Never write indicator math from scratch.
-- Indicators are computed on bars fetched from TimescaleDB (historical) or streamed via the WebSocket shovel (live).
+- Indicators are computed on bars fetched from TimescaleDB (historical) or streamed via the WebSocket feed (live).
 - Bars emitted by the WebSocket stream are published to `bars:{symbol}` topics on the EventBus.
 - Output: vectorized DataFrames consumed by strategy modules.
 
