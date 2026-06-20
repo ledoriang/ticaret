@@ -2,7 +2,7 @@
 
 ## System Overview
 
-The trading stack is structured as three distinct layers communicating through an asynchronous event bus. No layer directly calls another — all communication is through structured events.
+The trading stack is structured as four distinct layers communicating through an asynchronous event bus. No layer directly calls another — all communication is through structured events. The system is designed around **quality over quantity**: no trade is better than a bad trade, and the system will sit idle for days rather than trade in unfavorable conditions.
 
 ```
 +------------------------------------------------------------+
@@ -12,13 +12,19 @@ The trading stack is structured as three distinct layers communicating through a
                               |
                               v  [Emits BarEvent + SentimentEvent]
 +------------------------------------------------------------+
-|                  2. Strategy Orchestration                 |
-|   (Evaluators, Position Sizing, Rule-Engine, Risk Manager) |
+|             2. Strategy & Signal Generation                |
+|  (Strategies, Quality Filters, Stop-Loss Calculation)      |
++-----------------------------+------------------------------+
+                              |
+                              v  [Emits SignalEvent with stop_loss_price]
++------------------------------------------------------------+
+|             3. Risk & Position Management                  |
+|  (Regime Filter, Position Sizing, Risk Rules, Exits)       |
 +-----------------------------+------------------------------+
                               |
                               v  [Emits OrderEvent (if risk passes)]
 +------------------------------------------------------------+
-|                  3. Execution & Gateway                    |
+|                  4. Execution & Gateway                    |
 |          (Broker API Wrappers, Live State Tracking)        |
 +------------------------------------------------------------+
 ```
@@ -95,10 +101,10 @@ All events are typed Pydantic models carrying a correlation ID and schema versio
 | Event | Emitter | Consumer | Payload |
 |---|---|---|---|
 | `BarEvent` | LiveStream (WebSocket) | Orchestrator → BarBuffer → Strategy | symbol, timeframe, OHLCV, timestamp |
-| `SignalEvent` | Strategy (via Orchestrator) | Risk Manager | symbol, side, confidence, strategy_name, asset_class |
+| `SignalEvent` | Strategy (via Orchestrator) | Risk Manager | symbol, side, confidence, strategy_name, asset_class, **stop_loss_price**, **take_profit_price**, **entry_price** |
 | `SentimentEvent` | Sentiment Ingester (NewsProvider) | Orchestrator → Strategy | symbol, score (-1 to 1), confidence, source, provider_name |
-| `OrderEvent` | Risk Manager (approved) | Dispatcher/Execution | symbol, side, quantity, order_type, broker |
-| `FillEvent` | Broker Adapter | Portfolio, Risk, Monitoring | symbol, side, fill_price, quantity, fees, timestamp |
+| `OrderEvent` | Risk Manager (approved) | Dispatcher/Execution | symbol, side, quantity, order_type, broker, **stop_price**, **price** |
+| `FillEvent` | Broker Adapter | Portfolio, Risk, Monitoring, **Exit Manager** | symbol, side, fill_price, quantity, fees, timestamp |
 | `RiskBlockEvent` | Risk Manager (rejected) | Monitoring, Alerts | original_signal, reason, rule_that_blocked |
 | `CommandEvent` | CLI or external service | Orchestrator (Command Handler) | command: str (add_symbol, remove_symbol, add_strategy, remove_strategy, update_risk_rule), payload: dict |
 
@@ -170,19 +176,55 @@ The sentiment provider never produces a trade decision. It produces data that a 
 - Initial strategies: `SMACrossoverStrategy`, `RSIMeanReversionStrategy`, `SentimentEnhancedStrategy`.
 - Each strategy declares a **`lookback: int`** — the number of historical bars required to compute indicators. The Orchestrator allocates bar buffers sized to the maximum lookback across all loaded strategies.
 - **Strategy signature:** `on_data(self, bars: pd.DataFrame, sentiment: SentimentEvent | None) -> SignalEvent | None` — strategies receive full bar history and the latest sentiment event (if any).
+- **Every SignalEvent MUST include `stop_loss_price` and `entry_price`.** A signal without a stop loss is rejected by the risk manager. The strategy computes the stop based on recent volatility (ATR) or structure (recent swing low/high).
+- **Optional `take_profit_price`**: strategies may set a take-profit target based on a target risk:reward ratio (default 2:1).
+- **Quality filters** (`strategy/filters.py`): each strategy chains quality checks before emitting a signal. A signal that fails any filter is suppressed (not emitted). Filters include:
+  - Minimum trend alignment (e.g., only buy when price is above 200 SMA)
+  - Volume confirmation (require above-average volume on signal bar)
+  - Congestion zone exclusion (skip signals in tight sideways ranges)
+  - Minimum candle body size (avoid doji/inside bars)
+  - News blackout windows (don't enter within X minutes of scheduled news)
+  - Spread/liquidity check (skip illiquid symbols)
 - Adding a new strategy: create a file, subclass `Strategy`, declare `lookback`, implement `on_data()`, register it. No other code changes.
+
+### Market Regime Filter
+- Sits between the strategy output and the risk manager. Runs BEFORE risk rules are evaluated.
+- Checks whether the current market regime is tradeable for the given strategy.
+- **Volatility guard**: if ATR% is above a threshold (e.g., ATR/close > 5%), suppress all new entries — market is too chaotic.
+- **Drawdown circuit breaker**: if portfolio drawdown exceeds a daily limit (e.g., -2% intraday), halt all new entries for the rest of the day. Existing positions are managed by the exit manager (stop losses still execute).
+- **Trend regime detection**: using ADX or higher-timeframe SMA slope, classify the market as trending or ranging. Trend-following strategies (SMA crossover) only fire in trending regimes; mean-reversion strategies (RSI) only fire in ranging regimes.
+- The regime filter is strategy-aware: each strategy declares which regimes it trades in.
 
 ### Risk Manager
 - Sits between every strategy signal and the execution layer.
 - Contains modular, independently-testable risk rules.
 - Each rule returns pass/fail + reason.
-- Rules:
-  - Maximum drawdown per day
+- **Hard rules** (not configurable without code review):
+  - Maximum drawdown per day (e.g., -2% intraday → halt new entries)
   - Maximum exposure per single asset (e.g., 5% of portfolio)
   - Correlation check (prevent buying 5 highly correlated assets)
-  - Maximum daily trades
+  - Maximum daily trades (low number — e.g., 3 per day, not 30)
+  - **Stop-loss validation**: every SignalEvent must have `stop_loss_price` set and it must be on the correct side of `entry_price` (below for longs, above for shorts)
+- **Position sizing**: calculated from risk, not from signal confidence:
+  ```
+  risk_amount = portfolio_value * risk_per_trade  (default 1%)
+  stop_distance = abs(entry_price - stop_loss_price)
+  quantity = risk_amount / stop_distance
+  ```
+  This ensures every trade risks the same dollar amount regardless of asset price or volatility.
 - Risk rules accept **runtime parameter updates** via `CommandEvent` (`update_risk_rule`) — e.g., change max drawdown threshold without restart.
 - If any rule fails, the order is blocked and logged.
+
+### Exit Manager
+- Monitors open positions on every incoming `BarEvent`.
+- **Stop-loss execution**: if price breaches `stop_loss_price`, immediately emits a SELL `OrderEvent` to `orders:{symbol}`. No strategy involvement — stops are mechanical.
+- **Trailing stop**: as price moves in favor, the stop is ratcheted tighter. Configurable trailing method:
+  - ATR-based: `stop = current_price - N * ATR` (e.g., 2x ATR trail)
+  - Percentage-based: `stop = current_price * (1 - trail_pct)`
+- **Take-profit**: if price reaches `take_profit_price`, emits a SELL `OrderEvent`.
+- **Time-based exit**: if a position has been open for N bars without hitting stop or take-profit, close it. Prevents dead capital in stagnant positions.
+- **Exit events** are published to `fills:{symbol}` after execution, same as normal fills.
+- The exit manager subscribes to `bars:{symbol}` and maintains a registry of open positions with their stop/take-profit/trailing parameters.
 
 ## Layer 3: Execution & Gateway
 

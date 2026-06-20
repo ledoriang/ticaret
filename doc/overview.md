@@ -10,16 +10,19 @@ Retail algorithmic traders fail most often from poor execution infrastructure, b
 
 ## Core Principles
 
-1. **Modular and event-driven.** Every component communicates through asynchronous events over Redis Pub/Sub. No direct coupling between data ingestion, strategy logic, and execution. The Orchestrator subscribes to bar/sentiment events, publishes signals/orders through the bus.
-2. **Broker-agnostic.** A `BrokerProtocol` defines the interface. Swapping Binance for Alpaca is a config change, not a code change. Adding a new exchange is creating one adapter file.
-3. **Risk management is non-negotiable.** The Risk Manager sits between every strategy signal and the broker. No signal reaches execution without passing hardcoded risk rules.
-4. **News/sentiment produces data, not decisions.** News APIs that already include sentiment values (Alpha Vantage, Marketaux, Finnhub, StockGeist) are consumed via a pluggable `NewsProvider` protocol. Only the Strategy + Risk Manager produce orders.
-5. **Typed and strict.** `mypy --strict`, Pydantic v2 models, typed event dataclasses. Everything at a boundary is validated.
-6. **Bar buffer for strategy lookback.** Each strategy declares how many historical bars it needs. The engine maintains rolling windows per symbol so strategies receive meaningful history for indicator computation.
-7. **Runtime dynamic control.** Symbols and strategies can be added/removed at runtime via Redis `CommandEvent`s — no restart required.
-8. **Test before money.** Phase progression: backtest → paper trade → micro-live → expand. Capital enters only after infrastructure is proven.
-9. **Observe everything.** Prometheus metrics, Grafana dashboards, structured JSON logging with correlation IDs, Discord alerts across dedicated channels.
-10. **Everything runs in containers.** Runtime services (trading engine, sentiment ingester, Redis, TimescaleDB, Grafana, Prometheus) run in Docker Compose. Tests run in a dedicated `Dockerfile.test` container with in-process mocks (fakeredis, respx, mock WS fixtures). No code runs directly on the host for production or CI.
+1. **Quality over quantity.** No trade is better than a bad trade. The system is designed to sit idle for days if market conditions don't warrant a trade. A "bloodbath day" with zero trades is a successful day if the alternative was losing capital. Every signal must pass through quality filters, regime checks, and risk management before it becomes an order.
+2. **Every trade has a stop loss.** No signal reaches execution without a defined stop-loss price. Stop losses are not optional — they are set at signal generation time, enforced by the risk manager, and monitored by the orchestrator. A trade without a stop is a bug.
+3. **Risk-based position sizing.** Position size is calculated from portfolio risk and stop distance, not from signal confidence. `qty = (portfolio_value * risk_per_trade) / (entry_price - stop_loss_price)`. Default risk per trade: 1% of portfolio.
+4. **Modular and event-driven.** Every component communicates through asynchronous events over Redis Pub/Sub. No direct coupling between data ingestion, strategy logic, and execution. The Orchestrator subscribes to bar/sentiment events, publishes signals/orders through the bus.
+5. **Broker-agnostic.** A `BrokerProtocol` defines the interface. Swapping Binance for Alpaca is a config change, not a code change. Adding a new exchange is creating one adapter file.
+6. **Risk management is non-negotiable.** The Risk Manager sits between every strategy signal and the broker. No signal reaches execution without passing hardcoded risk rules. The risk manager also enforces stop-loss discipline and daily loss limits.
+7. **News/sentiment produces data, not decisions.** News APIs that already include sentiment values (Alpha Vantage, Marketaux, Finnhub, StockGeist) are consumed via a pluggable `NewsProvider` protocol. Only the Strategy + Risk Manager produce orders.
+8. **Typed and strict.** `mypy --strict`, Pydantic v2 models, typed event dataclasses. Everything at a boundary is validated.
+9. **Bar buffer for strategy lookback.** Each strategy declares how many historical bars it needs. The engine maintains rolling windows per symbol so strategies receive meaningful history for indicator computation.
+10. **Runtime dynamic control.** Symbols and strategies can be added/removed at runtime via Redis `CommandEvent`s — no restart required.
+11. **Test before money.** Phase progression: backtest (with walk-forward + out-of-sample) → paper trade → micro-live → expand. Capital enters only after infrastructure and strategies are proven across multiple market regimes.
+12. **Observe everything.** Prometheus metrics, Grafana dashboards, structured JSON logging with correlation IDs, Discord alerts across dedicated channels.
+13. **Everything runs in containers.** Runtime services (trading engine, sentiment ingester, Redis, TimescaleDB, Grafana, Prometheus) run in Docker Compose. Tests run in a dedicated `Dockerfile.test` container with in-process mocks (fakeredis, respx, mock WS fixtures). No code runs directly on the host for production or CI.
 
 ## Tech Stack
 
