@@ -141,7 +141,7 @@ class Orchestrator:
             )
 
         for name, strategy in self._strategies.items():
-            result = await strategy.on_data(df)
+            result = await strategy.on_data(df, sentiment=None)
             if result.signal:
                 result.signal.source = name
                 result.signal.correlation_id = bar.correlation_id or bar.event_id
@@ -173,12 +173,26 @@ class Orchestrator:
                     await self.event_bus.publish(f"risk_block:{signal.symbol}", block)
             return
 
+        portfolio_value = await self._get_portfolio_value()
+        entry_price = signal.entry_price or signal.price or 0.0
+        stop_price = signal.stop_loss_price
+        if entry_price <= 0 or stop_price is None:
+            quantity = max(1.0, signal.confidence * 100)
+        else:
+            stop_distance = abs(entry_price - stop_price)
+            risk_amount = portfolio_value * self.config.risk.risk_per_trade
+            if stop_distance > 0:
+                quantity = risk_amount / stop_distance
+            else:
+                quantity = max(1.0, signal.confidence * 100)
+
         order = OrderEvent(
             symbol=signal.symbol,
             side=signal.side,
             order_type=OrderType.MARKET,
-            quantity=max(1.0, signal.confidence * 100),
-            price=signal.price,
+            quantity=quantity,
+            price=signal.price or entry_price,
+            stop_price=stop_price,
             broker=self.dispatcher.routing.get(signal.asset_class, "paper"),
             strategy_name=signal.strategy_name,
             source="orchestrator",
@@ -193,6 +207,15 @@ class Orchestrator:
             await self._on_fill(fill)
         except Exception:
             logger.exception("order_failed", symbol=order.symbol)
+
+    async def _get_portfolio_value(self) -> float:
+        if self.paper_adapter:
+            try:
+                acc = await self.paper_adapter.get_account()
+                return acc.total_equity
+            except Exception:
+                pass
+        return 100_000.0
 
     async def _on_fill(self, fill: FillEvent) -> None:
         fills_received.labels(broker=fill.broker, symbol=fill.symbol).inc()

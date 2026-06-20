@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any
 
+from trading.core.enums import Side
 from trading.core.events import SignalEvent
 
 
@@ -75,4 +76,31 @@ class CorrelationRule(RiskRule):
         self.max_correlation_pct = max_correlation_pct
 
     async def evaluate(self, _signal: SignalEvent) -> tuple[bool, str]:
+        return True, ""
+
+
+class StopLossValidationRule(RiskRule):
+    name = "stop_loss_validation"
+
+    async def evaluate(self, signal: SignalEvent) -> tuple[bool, str]:
+        if signal.stop_loss_price is None:
+            return False, "Signal missing stop_loss_price"
+        if signal.entry_price is None:
+            return False, "Signal missing entry_price"
+        if signal.stop_loss_price <= 0:
+            return False, f"Invalid stop_loss_price: {signal.stop_loss_price}"
+        if signal.entry_price <= 0:
+            return False, f"Invalid entry_price: {signal.entry_price}"
+
+        if signal.side == Side.BUY and signal.stop_loss_price >= signal.entry_price:
+            return False, (
+                f"Stop loss ({signal.stop_loss_price}) must be below "
+                f"entry ({signal.entry_price}) for BUY signal"
+            )
+        if signal.side == Side.SELL and signal.stop_loss_price <= signal.entry_price:
+            return False, (
+                f"Stop loss ({signal.stop_loss_price}) must be above "
+                f"entry ({signal.entry_price}) for SELL signal"
+            )
+
         return True, ""
