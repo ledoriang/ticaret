@@ -31,11 +31,17 @@ ticaret/
 │   ├── data/                            # Data ingestion, storage, indicators, sentiment, news
 │   │   ├── __init__.py
 │   │   ├── ingestion.py                 # Historical bar fetching (delegates to broker adapter)
-│   │   ├── live_stream.py               # Async WebSocket streaming (delegates to broker adapter,
-│   │   │                                #   auto-reconnect, dynamic symbol subscription)
-│   │   ├── indicators.py                # pandas-ta / TA-Lib wrappers
+│   │   ├── live_stream.py               # Wraps WebSocketShovel, publishes BarEvent to bus
+│   │   ├── indicators.py                # Shared TA functions (sma, atr, adx)
 │   │   ├── repository.py                # TimescaleDB async read/write (asyncpg) — bars
 │   │   ├── sentiment_repository.py      # TimescaleDB — news_sentiment hypertable (traceability + backtest replay)
+│   │   │
+│   │   ├── feeds/                       # WebSocket feed infrastructure — universal shovel + handlers
+│   │   │   ├── __init__.py              # FEED_HANDLER_REGISTRY dict (same pattern as ADAPTER_REGISTRY)
+│   │   │   ├── base.py                  # FeedHandler Protocol + registry
+│   │   │   ├── shovel.py                # WebSocketShovel — universal connection manager
+│   │   │   │                            #   (connect/reconnect/backoff/ping-pong, zero exchange knowledge)
+│   │   │   └── binance.py               # BinanceFeedHandler — kline WS URL + message parsing
 │   │   │
 │   │   ├── scrapers/                    # RSS / social scrapers (future — raw text to LLM)
 │   │   │   ├── __init__.py

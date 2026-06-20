@@ -1,6 +1,11 @@
 # Broker Protocol & Exchange Adapter Design
 
-> **Note:** The same pluggable pattern (Protocol + registry) is used for news/sentiment providers. See the "News Provider Protocol" section below for details on `NewsProvider`, `PROVIDER_REGISTRY`, and Alpha Vantage / Marketaux / Finnhub / StockGeist / CachedNewsProvider implementations.
+> **Note:** The same pluggable pattern (Protocol + registry) is used in three places:
+> 1. **Brokers** — `BrokerProtocol` + `ADAPTER_REGISTRY` (this document)
+> 2. **WebSocket feeds** — `FeedHandler` + `FEED_HANDLER_REGISTRY` (see architecture.md "WebSocket Feed Infrastructure")
+> 3. **News/sentiment** — `NewsProvider` + `PROVIDER_REGISTRY` (see "News Provider Protocol" section below)
+>
+> All three follow the same pattern: one interface file, one registry dict, adding a new implementation = one file + one dict entry.
 
 ## The Problem
 
