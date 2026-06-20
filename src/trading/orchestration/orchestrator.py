@@ -23,6 +23,7 @@ from trading.monitoring.metrics import (
 from trading.orchestration.bar_buffer import BarBuffer
 from trading.orchestration.bus import EventBus
 from trading.orchestration.commands import CommandHandler
+from trading.orchestration.exit_manager import ExitManager
 from trading.risk.manager import RiskManager
 from trading.risk.regime_filter import RegimeFilter
 from trading.strategy.base import Strategy
@@ -54,6 +55,7 @@ class Orchestrator:
         self._symbols: list[str] = []
         self._filters: list[SignalFilter] = []
         self._regime_filter: RegimeFilter | None = None
+        self._exit_manager = ExitManager()
         self._running = False
         self._command_handler = CommandHandler(self)
 
@@ -122,6 +124,16 @@ class Orchestrator:
 
         if self.paper_adapter:
             self.paper_adapter.update_last_price(bar.symbol, bar.close)
+
+        # Check exit conditions for open positions
+        exit_order = self._exit_manager.on_bar(bar)
+        if exit_order is not None:
+            orders_placed.labels(broker=exit_order.broker, symbol=exit_order.symbol).inc()
+            try:
+                fill = await self.dispatcher.dispatch(exit_order)
+                await self._on_fill(fill)
+            except Exception:
+                logger.exception("exit_order_failed", symbol=exit_order.symbol)
 
         if self.bar_buffer:
             from trading.core.models import Bar as BarModel
@@ -276,3 +288,4 @@ class Orchestrator:
         )
         if self.paper_adapter:
             self.paper_adapter.update_last_price(fill.symbol, fill.fill_price)
+        self._exit_manager.on_fill(fill)
