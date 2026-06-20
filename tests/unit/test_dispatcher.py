@@ -24,7 +24,9 @@ class TestDispatcher:
             asset_class=AssetClass.CRYPTO,
         )
 
-    async def test_dispatch_routes_to_correct_adapter(self, paper: PaperAdapter, buy_order: OrderEvent) -> None:
+    async def test_dispatch_routes_to_correct_adapter(
+        self, paper: PaperAdapter, buy_order: OrderEvent
+    ) -> None:
         dispatcher = Dispatcher(adapters={"paper": paper})
         dispatcher.routing[AssetClass.CRYPTO] = "paper"
         fill = await dispatcher.dispatch(buy_order)
@@ -32,7 +34,9 @@ class TestDispatcher:
         assert fill.quantity == 1.0
         assert fill.broker == "paper"
 
-    async def test_dispatch_via_init_routes(self, paper: PaperAdapter, buy_order: OrderEvent) -> None:
+    async def test_dispatch_via_init_routes(
+        self, paper: PaperAdapter, buy_order: OrderEvent
+    ) -> None:
         brokers = BrokersConfig(active=ActiveBrokersConfig(crypto="paper", equity="paper"))
         dispatcher = Dispatcher(adapters={"paper": paper}, brokers_config=brokers)
         fill = await dispatcher.dispatch(buy_order)
@@ -49,7 +53,9 @@ class TestDispatcher:
         with pytest.raises(ValueError, match="Unknown adapter 'nonexistent'"):
             dispatcher.register_route(AssetClass.CRYPTO, "nonexistent")
 
-    async def test_dispatch_no_route_raises(self, paper: PaperAdapter, buy_order: OrderEvent) -> None:
+    async def test_dispatch_no_route_raises(
+        self, paper: PaperAdapter, buy_order: OrderEvent
+    ) -> None:
         dispatcher = Dispatcher(adapters={"paper": paper})
         buy_order.asset_class = AssetClass.EQUITY
         with pytest.raises(KeyError, match="No route registered for asset class 'equity'"):
@@ -72,12 +78,20 @@ class TestDispatcher:
         dispatcher.register_route(AssetClass.EQUITY, "second")
 
         crypto_order = OrderEvent(
-            symbol="BTC/USDT", side=Side.BUY, order_type=OrderType.MARKET,
-            quantity=0.5, price=50_000.0, asset_class=AssetClass.CRYPTO,
+            symbol="BTC/USDT",
+            side=Side.BUY,
+            order_type=OrderType.MARKET,
+            quantity=0.5,
+            price=50_000.0,
+            asset_class=AssetClass.CRYPTO,
         )
         equity_order = OrderEvent(
-            symbol="AAPL/USD", side=Side.SELL, order_type=OrderType.MARKET,
-            quantity=10.0, price=150.0, asset_class=AssetClass.EQUITY,
+            symbol="AAPL/USD",
+            side=Side.SELL,
+            order_type=OrderType.MARKET,
+            quantity=10.0,
+            price=150.0,
+            asset_class=AssetClass.EQUITY,
         )
 
         fill1 = await dispatcher.dispatch(crypto_order)

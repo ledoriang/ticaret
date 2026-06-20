@@ -2,7 +2,14 @@ import structlog
 
 from trading.core.config import TradingConfig
 from trading.core.enums import OrderType
-from trading.core.events import BarEvent, FillEvent, OrderEvent, SignalEvent
+from trading.core.events import (
+    BarEvent,
+    BaseEvent,
+    CommandEvent,
+    FillEvent,
+    OrderEvent,
+    SignalEvent,
+)
 from trading.data.live_stream import LiveStream
 from trading.execution.dispatcher import Dispatcher
 from trading.monitoring.metrics import (
@@ -11,6 +18,9 @@ from trading.monitoring.metrics import (
     risk_blocks,
     strategy_signals,
 )
+from trading.orchestration.bar_buffer import BarBuffer
+from trading.orchestration.bus import EventBus
+from trading.orchestration.commands import CommandHandler
 from trading.risk.manager import RiskManager
 from trading.strategy.base import Strategy
 from trading.strategy.registry import StrategyRegistry
@@ -24,14 +34,20 @@ class Orchestrator:
         config: TradingConfig,
         dispatcher: Dispatcher,
         risk_manager: RiskManager,
+        event_bus: EventBus | None = None,
+        bar_buffer: BarBuffer | None = None,
         live_stream: LiveStream | None = None,
     ) -> None:
         self.config = config
         self.dispatcher = dispatcher
         self.risk_manager = risk_manager
+        self.event_bus = event_bus
+        self.bar_buffer = bar_buffer
         self.live_stream = live_stream
         self._strategies: dict[str, Strategy] = {}
+        self._symbols: list[str] = []
         self._running = False
+        self._command_handler = CommandHandler(self)
 
     def load_strategy(self, name: str, **kwargs: object) -> None:
         cls = StrategyRegistry.get(name)
@@ -41,6 +57,11 @@ class Orchestrator:
     async def start(self) -> None:
         self._running = True
         logger.info("orchestrator_started", mode=self.config.execution_mode)
+
+        if self.event_bus:
+            self.event_bus.subscribe("commands:*", self._on_command)
+            await self.event_bus.start()
+
         if self.live_stream:
             self.live_stream.on_bar(self._on_bar)
             await self.live_stream.start()
@@ -49,22 +70,44 @@ class Orchestrator:
         self._running = False
         if self.live_stream:
             await self.live_stream.stop()
+        if self.event_bus:
+            await self.event_bus.stop()
         logger.info("orchestrator_stopped")
+
+    async def _on_command(self, event: CommandEvent | BaseEvent) -> None:
+        if isinstance(event, CommandEvent):
+            await self._command_handler.handle(event)
 
     async def _on_bar(self, event: BarEvent) -> None:
         import pandas as pd
 
         bar = event
-        df = pd.DataFrame(
-            {
-                "open": [bar.open],
-                "high": [bar.high],
-                "low": [bar.low],
-                "close": [bar.close],
-                "volume": [bar.volume],
-            },
-            index=[bar.timestamp],
-        )
+        if self.bar_buffer:
+            from trading.core.models import Bar as BarModel
+
+            bar_model = BarModel(
+                symbol=bar.symbol,
+                asset_class=bar.asset_class,
+                timeframe="",  # inherited from stream config
+                open=bar.open,
+                high=bar.high,
+                low=bar.low,
+                close=bar.close,
+                volume=bar.volume,
+                timestamp=bar.timestamp,
+            )
+            df = self.bar_buffer.add(bar.symbol, bar_model)
+        else:
+            df = pd.DataFrame(
+                {
+                    "open": [bar.open],
+                    "high": [bar.high],
+                    "low": [bar.low],
+                    "close": [bar.close],
+                    "volume": [bar.volume],
+                },
+                index=[bar.timestamp],
+            )
         for name, strategy in self._strategies.items():
             result = await strategy.on_data(df)
             if result.signal:

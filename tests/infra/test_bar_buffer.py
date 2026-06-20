@@ -129,9 +129,7 @@ class TestBarBufferColdStart:
 
     async def test_cold_start_does_not_exceed_max_size(self, buffer: BarBuffer) -> None:
         mock_adapter = AsyncMock()
-        mock_adapter.get_bars.return_value = [
-            _make_bar("BTC/USDT", float(i)) for i in range(10)
-        ]
+        mock_adapter.get_bars.return_value = [_make_bar("BTC/USDT", float(i)) for i in range(10)]
         await buffer.cold_start(
             symbol="BTC/USDT",
             adapter=mock_adapter,
@@ -140,4 +138,3 @@ class TestBarBufferColdStart:
             end=datetime(2024, 1, 10),
         )
         assert buffer.size("BTC/USDT") == 5  # max_size
-
