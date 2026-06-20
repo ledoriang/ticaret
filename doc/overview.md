@@ -10,13 +10,16 @@ Retail algorithmic traders fail most often from poor execution infrastructure, b
 
 ## Core Principles
 
-1. **Modular and event-driven.** Every component communicates through asynchronous events. No direct coupling between data ingestion, strategy logic, and execution.
+1. **Modular and event-driven.** Every component communicates through asynchronous events over Redis Pub/Sub. No direct coupling between data ingestion, strategy logic, and execution. The Orchestrator subscribes to bar/sentiment events, publishes signals/orders through the bus.
 2. **Broker-agnostic.** A `BrokerProtocol` defines the interface. Swapping Binance for Alpaca is a config change, not a code change. Adding a new exchange is creating one adapter file.
 3. **Risk management is non-negotiable.** The Risk Manager sits between every strategy signal and the broker. No signal reaches execution without passing hardcoded risk rules.
-4. **LLMs produce data, not decisions.** Language models output structured sentiment scores. Only the Strategy + Risk Manager produce orders.
+4. **News/sentiment produces data, not decisions.** News APIs that already include sentiment values (Alpha Vantage, Marketaux, Finnhub, StockGeist) are consumed via a pluggable `NewsProvider` protocol. Only the Strategy + Risk Manager produce orders.
 5. **Typed and strict.** `mypy --strict`, Pydantic v2 models, typed event dataclasses. Everything at a boundary is validated.
-6. **Test before money.** Phase progression: backtest → paper trade → micro-live → expand. Capital enters only after infrastructure is proven.
-7. **Observe everything.** Prometheus metrics, Grafana dashboards, structured JSON logging with correlation IDs, Discord alerts across dedicated channels.
+6. **Bar buffer for strategy lookback.** Each strategy declares how many historical bars it needs. The engine maintains rolling windows per symbol so strategies receive meaningful history for indicator computation.
+7. **Runtime dynamic control.** Symbols and strategies can be added/removed at runtime via Redis `CommandEvent`s — no restart required.
+8. **Test before money.** Phase progression: backtest → paper trade → micro-live → expand. Capital enters only after infrastructure is proven.
+9. **Observe everything.** Prometheus metrics, Grafana dashboards, structured JSON logging with correlation IDs, Discord alerts across dedicated channels.
+10. **Everything runs in containers.** Runtime services (trading engine, sentiment ingester, Redis, TimescaleDB, Grafana, Prometheus) run in Docker Compose. Tests run in a dedicated `Dockerfile.test` container with in-process mocks (fakeredis, respx, mock WS fixtures). No code runs directly on the host for production or CI.
 
 ## Tech Stack
 
@@ -32,11 +35,14 @@ Retail algorithmic traders fail most often from poor execution infrastructure, b
 | Initial broker | Binance (crypto) |
 | Second broker | Alpaca (US equities) |
 | Broker abstraction | `BrokerProtocol` — pluggable, config-driven |
-| Sentiment | Ollama (local LLM), structured JSON output |
-| PyO3 | Scaffolded in Phase 1, implemented in Phase 5 (conditional) |
+| News/sentiment providers | Pluggable `NewsProvider` protocol — Alpha Vantage, Marketaux, Finnhub, StockGeist, CachedNewsProvider |
+| News abstraction | `NewsProvider` — pluggable, config-driven, same pattern as `BrokerProtocol` |
+| PyO3 | Scaffolded in Phase 1, implemented in Phase 4 (conditional) |
 | Linting/formatting | Ruff |
 | Type checking | mypy (strict) |
-| Testing | pytest + pytest-asyncio |
+| Testing | pytest + pytest-asyncio — `tests/infra/` (plumbing) and `tests/trading/` (strategy simulation) |
+| Containerization | Docker Compose (runtime) + `Dockerfile.test` (test container) |
+| Mocking (test) | fakeredis (Redis), respx (HTTP), in-fixture mock WS server |
 | Logging | structlog (JSON, correlation IDs) |
 | CLI | Typer |
 | Async HTTP | httpx |
@@ -47,7 +53,7 @@ Retail algorithmic traders fail most often from poor execution infrastructure, b
 | Asset Class | Phase Introduced | Market Hours | First Broker |
 |---|---|---|---|
 | Crypto | Phase 1 | 24/7 | Binance |
-| US Equities | Phase 4 | NYSE calendar (09:30–16:00 ET) | Alpaca (paper → live) |
+| US Equities | Phase 3 | NYSE calendar (09:30–16:00 ET) | Alpaca (paper → live) |
 
 ## Regional Considerations
 
@@ -56,6 +62,37 @@ Retail algorithmic traders fail most often from poor execution infrastructure, b
 - Alpaca International available for EU residents
 - IBKR fully available in both EU and ZA
 - Crypto exchanges generally available subject to local country restrictions
+
+## News / Sentiment Providers
+
+The system consumes news APIs that already include sentiment values — no self-hosted LLM inference required for the base pipeline. Providers are pluggable via a `NewsProvider` protocol (same pattern as `BrokerProtocol` for brokers). Adding a new news API = one file + one dict entry.
+
+| Provider | Free Tier Limit | Primary Asset Focus | Sentiment Granularity |
+|---|---|---|---|
+| Alpha Vantage | 25 requests / day | Stocks, Crypto, Forex | Ticker-specific scores (-1.0 to 1.0) |
+| Marketaux | 100 requests / day | Global Stocks, Crypto | Entity-level impact & sentiment ratios |
+| Finnhub | 30 requests / minute | US Equities | Aggregated company buzz & sector trends |
+| StockGeist | Credit-based | US Equities | Real-time news + social sentiment streams |
+
+All providers enforce their rate limits in code via token-bucket limiters. A `CachedNewsProvider` returns canned payloads from a YAML fixture for development and backtesting — zero API quota burn. Config flag `sentiment.provider` flips between `cached` and any real provider.
+
+Sentiment events flow through the same EventBus as bars and signals. Every SentimentEvent is persisted to TimescaleDB (`news_sentiment` hypertable) for traceability and backtest replay.
+
+## Containerization
+
+All runtime code runs in Docker containers via `docker-compose.yml`:
+
+| Container | Image | Purpose |
+|---|---|---|
+| `trading-engine` | `Dockerfile` (app) | Orchestrator + live stream + paper adapter |
+| `sentiment-ingester` | `Dockerfile` (app, command override) | Polls news provider, publishes SentimentEvents |
+| `redis` | `redis:7-alpine` | Event bus (Pub/Sub) |
+| `timescaledb` | `timescale/timescaledb` | OHLCV bars, sentiment, orders, fills |
+| `prometheus` | `prom/prometheus` | Metrics scraping |
+| `grafana` | `grafana/grafana` | Dashboards |
+| `test-runner` | `Dockerfile.test` | Runs `tests/infra/` and `tests/trading/` suites |
+
+Tests run in a dedicated `Dockerfile.test` container that installs dev dependencies, runs `ruff`, `mypy`, then `pytest`. No separate mock-services containers — all mocks are in-process (fakeredis, respx, mock WS fixtures).
 
 ## Related Docs
 

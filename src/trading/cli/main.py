@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime
+from typing import Literal
 
 import structlog
 import typer
@@ -31,22 +32,37 @@ app = typer.Typer()
 
 @app.command()
 def backtest(
+    strategy: str = typer.Option("sma_crossover", "--strategy", help="Strategy name"),
     symbol: str = "BTC/USDT",
+    timeframe: str = "1d",
     start: str = "2020-01-01",
     end: str = "2025-01-01",
     config: str = "configs/development.yaml",
     initial_cash: float = 10_000.0,
+    source: Literal["adapter", "synthetic"] = typer.Option(
+        "adapter", "--source", help="Data source: adapter or synthetic"
+    ),
 ) -> None:
-    """Run a backtest for the given symbol."""
+    """Run a backtest for the given symbol and strategy."""
     cfg = load_config(config)
     runner = BacktestRunner(cfg)
 
+    from trading.strategy.registry import StrategyRegistry
+
+    available = StrategyRegistry.list_strategies()
+    if strategy not in available:
+        typer.echo(f"Unknown strategy '{strategy}'. Available: {available}", err=True)
+        raise typer.Exit(code=1)
+
     async def _run() -> None:
         metrics = await runner.run(
+            strategy_name=strategy,
             symbol=symbol,
+            timeframe=timeframe,
             start=start,
             end=end,
             initial_cash=initial_cash,
+            source=source,
         )
         typer.echo("\n=== Backtest Results ===")
         for key, value in metrics.summary().items():

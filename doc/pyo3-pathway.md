@@ -2,13 +2,13 @@
 
 ## When to Use This
 
-Phase 5 is **conditional**. It is only executed if profiling reveals that Python is a real bottleneck. The most likely candidates are:
+Phase 4 is **conditional**. It is only executed if profiling reveals that Python is a real bottleneck. The most likely candidates are:
 
 - Backtesting simulation iterating millions of bars with position tracking
 - Batch indicator computation across hundreds of tickers simultaneously
 - Monte Carlo VaR simulation for risk scenario modeling
 
-If Phase 1-4 run smoothly and backtesting completes in acceptable time, skip this phase entirely.
+If Phase 1-3 run smoothly and backtesting completes in acceptable time, skip this phase entirely.
 
 ## What Moves to Rust
 
@@ -127,9 +127,6 @@ Identify functions spending > 50% of execution time in pure computation (not I/O
 ### 2. Port One Function
 
 Start with the backtest simulation engine:
-
-```rust
-// rust_kernel/src/backtest.rs
 use pyo3::prelude::*;
 use numpy::PyArray1;
 

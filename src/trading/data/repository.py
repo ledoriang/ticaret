@@ -90,8 +90,39 @@ class TimescaleRepository:
             for r in rows
         ]
 
-    async def bulk_insert_bars(self, file_path: str) -> None:
-        raise NotImplementedError("bulk_insert_bars not yet implemented")
+    async def bulk_insert_bars(self, bars: list[Bar], batch_size: int = 500) -> int:
+        assert self._pool
+        records = [
+            (
+                bar.timestamp,
+                bar.symbol,
+                bar.timeframe,
+                bar.open,
+                bar.high,
+                bar.low,
+                bar.close,
+                bar.volume,
+            )
+            for bar in bars
+        ]
+        async with self._pool.acquire() as conn:
+            for i in range(0, len(records), batch_size):
+                batch = records[i : i + batch_size]
+                await conn.copy_records_to_table(
+                    "bars",
+                    records=batch,
+                    columns=[
+                        "time",
+                        "symbol",
+                        "timeframe",
+                        "open",
+                        "high",
+                        "low",
+                        "close",
+                        "volume",
+                    ],
+                )
+        return len(records)
 
     async def close(self) -> None:
         if self._pool:
