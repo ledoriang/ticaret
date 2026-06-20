@@ -65,6 +65,11 @@ class BacktestConfig(BaseModel):
     slippage: SlippageConfig = Field(default_factory=SlippageConfig)
 
 
+class RiskConfig(BaseModel):
+    risk_per_trade: float = 0.01
+    max_risk_per_day: float = 0.03
+
+
 class TradingConfig(BaseModel):
     execution_mode: Literal["dry_run", "paper", "live"] = "dry_run"
     redis: RedisConfig = Field(default_factory=RedisConfig)
@@ -72,6 +77,7 @@ class TradingConfig(BaseModel):
     brokers: BrokersConfig = Field(default_factory=BrokersConfig)
     backtest: BacktestConfig = Field(default_factory=BacktestConfig)
     monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)
+    risk: RiskConfig = Field(default_factory=RiskConfig)
 
 
 def load_config(path: str | Path = "configs/development.yaml") -> TradingConfig:

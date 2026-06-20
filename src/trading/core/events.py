@@ -22,6 +22,9 @@ class SignalEvent(BaseEvent):
     confidence: float = Field(ge=0.0, le=1.0)
     strategy_name: str
     price: float | None = None
+    stop_loss_price: float | None = None
+    entry_price: float | None = None
+    take_profit_price: float | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
