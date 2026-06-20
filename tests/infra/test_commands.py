@@ -173,12 +173,13 @@ class TestCommandHandler:
 
         mock_bus = MagicMock()
         mock_bus.subscribe = MagicMock()
+        mock_bus.subscribe_pattern = MagicMock()
         mock_bus.start = AsyncMock()
         mock_bus.stop = AsyncMock()
 
         orch.event_bus = mock_bus
         await orch.start()
 
-        mock_bus.subscribe.assert_called_once_with("commands:*", orch._on_command)
+        mock_bus.subscribe_pattern.assert_any_call("commands:*", orch._on_command)
         mock_bus.start.assert_awaited_once()
         await orch.stop()
