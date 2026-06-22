@@ -119,30 +119,30 @@ Mostly **DONE**. Remaining gaps before re-baselining on Phase 2:
 | 2.G.6 | Wire into orchestrator | Orchestrator creates the ExitManager on start. When a FillEvent arrives (from `fills:{symbol}`), the exit manager registers the position. On each BarEvent, the exit manager checks all open positions. |
 | 2.G.7 | Trading tests | `tests/trading/test_exit_manager.py` — stop-loss hit → SELL order emitted. Trailing stop ratchets correctly. Take-profit hit → SELL order emitted. Time-based exit after N bars. Stop never loosens. |
 
-### 2.H — WebSocket feed infrastructure: universal shovel + feed handlers (~8h)
+### 2.H — WebSocket feed infrastructure: universal feed + feed handlers (~8h)
 
-**Goal:** Build a modular WebSocket "shovel" that can handle any WebSocket data feed — not just Binance. The shovel manages connection lifecycle (connect, reconnect, ping/pong, backoff) while feed-specific logic (URL construction, message parsing, subscribe framing) is delegated to pluggable handlers. Adding a new exchange's WebSocket feed = one handler file + one registry entry, same pattern as `BrokerProtocol` and `NewsProvider`.
+**Goal:** Build a modular WebSocket feed connection that can handle any WebSocket data feed — not just Binance. The feed manages connection lifecycle (connect, reconnect, ping/pong, backoff) while feed-specific logic (URL construction, message parsing, subscribe framing) is delegated to pluggable handlers. Adding a new exchange's WebSocket feed = one handler file + one registry entry, same pattern as `BrokerProtocol` and `NewsProvider`.
 
 **Architecture:**
 ```
-LiveStream  →  WebSocketShovel  →  FeedHandler (Protocol)
-                                    ├── BinanceFeedHandler
-                                    ├── CoinbaseFeedHandler (future)
-                                    └── KrakenFeedHandler (future)
+LiveStream  →  WebSocketFeed  →  FeedHandler (Protocol)
+                                ├── BinanceFeedHandler
+                                ├── CoinbaseFeedHandler (future)
+                                └── KrakenFeedHandler (future)
 ```
 
-The shovel is universal — it has zero knowledge of any specific exchange. The handler knows the exchange's WS URL format, message structure, and subscription protocol.
+The feed is universal — it has zero knowledge of any specific exchange. The handler knows the exchange's WS URL format, message structure, and subscription protocol.
 
 | Step | Deliverable | Key Details |
 |---|---|---|
 | 2.H.1 | `data/feeds/base.py` | `FeedHandler` Protocol: `build_url(symbols, timeframe) -> str`, `parse_message(raw) -> Bar \| None`, `build_subscribe(symbols) -> str \| None`, `build_unsubscribe(symbols) -> str \| None`, `is_closed_message(raw) -> bool`. `FEED_HANDLER_REGISTRY` dict for plugin registration. |
-| 2.H.2 | `data/feeds/shovel.py` | `WebSocketShovel` — universal async generator. Takes a `FeedHandler`, manages connection via `websockets` library. Exponential backoff (1s → 2s → 4s → … → 60s max). Ping/pong keepalive via `ping_interval=20`. Yields `Bar` objects from `handler.parse_message()`. Zero knowledge of any specific exchange. |
+| 2.H.2 | `data/feeds/feed.py` | `WebSocketFeed` — universal async generator. Takes a `FeedHandler`, manages connection via `websockets` library. Exponential backoff (1s → 2s → 4s → … → 60s max). Ping/pong keepalive via `ping_interval=20`. Yields `Bar` objects from `handler.parse_message()`. Zero knowledge of any specific exchange. |
 | 2.H.3 | `data/feeds/binance.py` | `BinanceFeedHandler` — implements `FeedHandler`. Builds Binance kline WS URLs (`wss://stream.binance.com:9443/ws/{stream}`), parses kline messages into `Bar` objects, maps Binance symbols (BTCUSDT → BTC/USDT). URL-based subscription (no control frames needed). Registered in `FEED_HANDLER_REGISTRY`. |
 | 2.H.4 | `data/feeds/__init__.py` | `FEED_HANDLER_REGISTRY: dict[str, type[FeedHandler]]` — same pattern as `ADAPTER_REGISTRY`. Adding a new feed = one file + one dict entry. |
-| 2.H.5 | Refactor `BinanceAdapter.stream_bars()` | Delegate to `WebSocketShovel` with `BinanceFeedHandler`. The adapter no longer contains WS connection logic — it just creates a shovel + handler and yields from `shovel.stream()`. |
-| 2.H.6 | `data/live_stream.py` refactor | `LiveStream` wraps the shovel. Async generator iteration with task-based run loop. Emits `BarEvent` → `bars:{symbol}`. Error-tolerant `_run()` with auto-restart. Dynamic `add_symbol()` / `remove_symbol()` (triggers shovel resubscription). |
+| 2.H.5 | Refactor `BinanceAdapter.stream_bars()` | Delegate to `WebSocketFeed` with `BinanceFeedHandler`. The adapter no longer contains WS connection logic — it just creates a feed + handler and yields from `feed.stream()`. |
+| 2.H.6 | `data/live_stream.py` refactor | `LiveStream` wraps the feed. Async generator iteration with task-based run loop. Emits `BarEvent` → `bars:{symbol}`. Error-tolerant `_run()` with auto-restart. Dynamic `add_symbol()` / `remove_symbol()` (triggers feed resubscription). |
 | 2.H.7 | Interface change | `AbstractBrokerAdapter.stream_bars()` and `BrokerProtocol.stream_bars()` changed from sync `Generator` to `AsyncGenerator`. `PaperAdapter` updated. |
-| 2.H.8 | Infra tests | `tests/infra/test_binance_ws.py` — mock WS server via `websockets.serve()`, test bar yield, symbol parsing, multiple bars. `tests/infra/test_shovel.py` — test shovel reconnection logic with mock handler, verify backoff, verify handler delegation. |
+| 2.H.8 | Infra tests | `tests/infra/test_binance_ws.py` — mock WS server via `websockets.serve()`, test bar yield, symbol parsing, multiple bars. `tests/infra/test_ws_feed.py` — test feed delegation logic with mock handler, verify handler calls. |
 
 ### 2.I — Sentiment pipeline: pluggable multi-provider news (~7h)
 
