@@ -70,6 +70,21 @@ class RiskConfig(BaseModel):
     max_risk_per_day: float = 0.03
 
 
+class SentimentProviderConfig(BaseModel):
+    provider: str = "cached"
+    poll_interval_seconds: int = 300
+    symbols: list[str] = Field(default_factory=lambda: ["BTC/USDT", "ETH/USDT"])
+    alpha_vantage_api_key: str = ""
+    marketaux_api_token: str = ""
+    finnhub_api_key: str = ""
+    stockgeist_api_key: str = ""
+    cached_fixture_path: str = ""
+
+
+class SentimentConfig(BaseModel):
+    provider: SentimentProviderConfig = Field(default_factory=SentimentProviderConfig)
+
+
 class TradingConfig(BaseModel):
     execution_mode: Literal["dry_run", "paper", "live"] = "dry_run"
     redis: RedisConfig = Field(default_factory=RedisConfig)
@@ -78,6 +93,7 @@ class TradingConfig(BaseModel):
     backtest: BacktestConfig = Field(default_factory=BacktestConfig)
     monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)
     risk: RiskConfig = Field(default_factory=RiskConfig)
+    sentiment: SentimentConfig = Field(default_factory=SentimentConfig)
 
 
 def load_config(path: str | Path = "configs/development.yaml") -> TradingConfig:
