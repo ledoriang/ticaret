@@ -1,9 +1,21 @@
+from pathlib import Path
+
 import pytest
 
 from trading.core.config import TradingConfig
 from trading.core.enums import OrderType, Side
 from trading.core.events import OrderEvent
 from trading.execution.paper import PaperAdapter
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:  # noqa: ARG001
+    for item in items:
+        fspath = Path(item.fspath)
+        parts = fspath.parts
+        if "infra" in parts:
+            item.add_marker(pytest.mark.infra)
+        elif "trading" in parts:
+            item.add_marker(pytest.mark.trading)
 
 
 @pytest.fixture

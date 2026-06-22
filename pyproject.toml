@@ -67,3 +67,7 @@ ignore_errors = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "infra: tests/infra/ — infrastructure plumbing (bus, buffer, config, adapters, news providers)",
+    "trading: tests/trading/ — trading behavior (strategies, orchestrator, exits, filters, backtest)",
+]
