@@ -9,6 +9,7 @@ from trading.backtest.runner import BacktestRunner
 from trading.backtest.walk_forward import WalkForwardAnalyzer
 from trading.core.config import load_config
 from trading.core.logging import configure_logging
+from trading.data.sentiment_repository import SentimentRepository
 from trading.execution.adapters.base import AbstractBrokerAdapter
 from trading.execution.dispatcher import Dispatcher
 from trading.execution.paper import PaperAdapter
@@ -24,6 +25,7 @@ from trading.monitoring.metrics import (
 from trading.orchestration.orchestrator import Orchestrator
 from trading.risk.manager import RiskManager
 from trading.risk.rules import MaxDailyTradesRule, MaxDrawdownRule, MaxExposureRule
+from trading.services.sentiment_ingester import SentimentIngester
 
 configure_logging()
 logger = structlog.get_logger(__name__)
@@ -257,6 +259,30 @@ def list_strategies() -> None:
     typer.echo("Registered strategies:")
     for s in strategies:
         typer.echo(f"  - {s}")
+
+
+@app.command()
+def sentiment_ingest(
+    config: str = "configs/development.yaml",
+) -> None:
+    """Run the sentiment ingester service."""
+    cfg = load_config(config)
+    provider_cfg = cfg.sentiment.provider
+    repo = SentimentRepository(cfg.database)
+
+    async def _run() -> None:
+        await repo.connect()
+        await repo.ensure_schema()
+        ingester = SentimentIngester(
+            config=provider_cfg,
+            repository=repo,
+        )
+        await ingester.run_forever()
+
+    try:
+        asyncio.run(_run())
+    except KeyboardInterrupt:
+        typer.echo("\nSentiment ingester stopped")
 
 
 if __name__ == "__main__":

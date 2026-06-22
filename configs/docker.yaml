@@ -33,6 +33,14 @@ backtest:
   slippage:
     basis_points: 5
 
+sentiment:
+  provider:
+    provider: cached
+    poll_interval_seconds: 300
+    symbols:
+      - BTC/USDT
+      - ETH/USDT
+
 monitoring:
   prometheus_port: 8000
   alerts:

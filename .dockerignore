@@ -1,8 +1,11 @@
 .git
 .venv
+.mypy_cache
+.ruff_cache
 .pytest_cache
 __pycache__
 *.pyc
+*.egg-info
 node_modules
 doc
 tests
@@ -10,4 +13,5 @@ scripts
 *.md
 .dockerignore
 Dockerfile
+Dockerfile.test
 docker-compose.yml

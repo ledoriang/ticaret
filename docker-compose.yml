@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: ticaret-engine
     container_name: trading-engine
     command: ["paper-trade", "--strategy", "sma_crossover", "--symbols", "BTC/USDT", "--config", "/app/configs/docker.yaml"]
     ports:
@@ -16,11 +17,25 @@ services:
       timescaledb:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import trading"]
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/metrics', timeout=3).raise_for_status()"]
       start_period: 15s
       interval: 10s
       timeout: 5s
       retries: 3
+    restart: unless-stopped
+
+  sentiment-ingester:
+    image: ticaret-engine
+    container_name: trading-sentiment
+    command: ["sentiment-ingest", "--config", "/app/configs/docker.yaml"]
+    environment:
+      - TRADING_REDIS__HOST=redis
+      - TRADING_DATABASE__HOST=timescaledb
+    depends_on:
+      redis:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
     restart: unless-stopped
 
   redis:
@@ -92,6 +107,22 @@ services:
       timeout: 5s
       retries: 3
     restart: unless-stopped
+
+  test-runner:
+    profiles:
+      - test
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: trading-test
+    environment:
+      - TRADING_REDIS__HOST=redis
+      - TRADING_DATABASE__HOST=timescaledb
+    depends_on:
+      redis:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
 
 volumes:
   timescaledb_data:
