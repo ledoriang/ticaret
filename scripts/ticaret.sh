@@ -48,9 +48,14 @@ Data:
 Trading:
   backtest [opts]   Run backtest (forwards args to trading CLI)
   paper-trade [opts] Paper-trade a strategy via paper adapter
+  sentiment-ingest  Run sentiment ingester
   list-strategies   List registered strategies
   shell             Drop into Python REPL with trading package
   setup             Initial project setup (Python install, deps sync, rust stub build)
+
+Testing:
+  test-infra [opts] Run infra tests via Docker test profile (forwards pytest args)
+  test-trading [opts] Run trading tests via Docker test profile (forwards pytest args)
 
 Other:
   help              Show this help
@@ -141,9 +146,22 @@ case "${1:-help}" in
         shift
         uv run trading paper-trade "$@"
         ;;
+    sentiment-ingest)
+        shift
+        uv run trading sentiment-ingest "$@"
+        ;;
     list-strategies|strategies)
         uv run trading list-strategies
         ;;
+    test-infra)
+        shift
+        check_docker
+        docker compose --profile test run --rm test-runner tests/infra/ "$@"
+        ;;
+    test-trading)
+        shift
+        check_docker
+        docker compose --profile test run --rm test-runner tests/trading/ "$@"
     shell)
         uv run python -c "import trading; print('trading package imported successfully')" && uv run python
         ;;
