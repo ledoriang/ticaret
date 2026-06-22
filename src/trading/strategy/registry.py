@@ -5,7 +5,9 @@ if TYPE_CHECKING:
 
 
 def _ensure_strategies_loaded() -> None:
-    import trading.strategy.sma_crossover  # noqa: F401 — triggers @StrategyRegistry.register
+    import trading.strategy.rsi_mean_reversion  # noqa: F401
+    import trading.strategy.sentiment_enhanced  # noqa: F401
+    import trading.strategy.sma_crossover  # noqa: F401
 
 
 class StrategyRegistry:
